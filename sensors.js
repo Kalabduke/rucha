@@ -12,8 +12,25 @@
     return 2 * EARTH_R * Math.asin(Math.min(1, Math.sqrt(h)));
   }
 
+  var LAST_FIX_KEY = 'rucha_last_fix_v1';
+  var LAST_FIX_MAX_AGE = 6 * 60 * 60 * 1000; // 6 hours
+
+  function loadLastFix() {
+    try {
+      var raw = global.localStorage && global.localStorage.getItem(LAST_FIX_KEY);
+      if (!raw) return null;
+      var f = JSON.parse(raw);
+      if (!f || !isFinite(f.lat) || !isFinite(f.lng)) return null;
+      if (!f.t || Date.now() - f.t > LAST_FIX_MAX_AGE) return null;
+      return f;
+    } catch (e) { return null; }
+  }
+  function saveLastFix(fix) {
+    try { if (global.localStorage) global.localStorage.setItem(LAST_FIX_KEY, JSON.stringify(fix)); } catch (e) {}
+  }
+
   var S = {
-    gps: { supported: !!navigator.geolocation, watching: false, last: null, watchId: null, error: null },
+    gps: { supported: !!navigator.geolocation, watching: false, last: null, watchId: null, error: null, onFix: null, onError: null, denied: false },
     hr: { connected: false, bpm: null, name: '', error: null },
     csc: { connected: false, name: '', cadence: null, speed: null, error: null },
     power: { connected: false, name: '', watts: null, error: null },
@@ -23,6 +40,10 @@
 
   var hasBle = !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
   var secure = global.isSecureContext !== false;
+
+  // Show the last known position straight away instead of waiting for the
+  // first live fix (handy on phones where GPS acquisition takes a few seconds).
+  S.gps.last = loadLastFix();
 
   /* ---------------- GPS ---------------- */
 
@@ -56,7 +77,7 @@
    */
   function TrackFilter(opts) {
     opts = opts || {};
-    this.maxAcc = opts.maxAccuracy || 25;        // metres
+    this.maxAcc = opts.maxAccuracy || 45;        // metres
     this.maxSpeed = opts.maxSpeed || 12;         // m/s (43 km/h) run; set higher for ride
     this.minMove = opts.minMove || 3;            // metres
     this.last = null;
@@ -86,8 +107,10 @@
     var acc = fix.accuracy != null ? fix.accuracy : 50;
     if (acc > this.maxAcc) return { accept: false, reason: 'accuracy' };
 
-    // kalman-style smoothing (variance in m^2)
-    var q = 5;  // process noise m per sec
+    // kalman-style smoothing (variance in m^2). A moving fix gets a higher
+    // process noise so the drawn track follows corners instead of lagging behind.
+    var spd = (fix.speed != null && isFinite(fix.speed)) ? Math.abs(fix.speed) : 0;
+    var q = 5 + Math.min(10, spd * 2.5);  // m per sec
     var lat, lng;
     if (this.sLat == null) {
       this.sLat = fix.lat; this.sLng = fix.lng; this.sVar = acc * acc;
@@ -112,7 +135,7 @@
     var step = distM(this.last, pt);
     var dtS = Math.max(0.001, (pt.t - this.last.t) / 1000);
     if (step / dtS > this.maxSpeed) return { accept: false, reason: 'speed' };
-    var dead = Math.max(this.minMove, acc * 0.5);
+    var dead = Math.max(2, Math.min(acc * 0.35, 8));
     if (step < dead) {
       // standing still: keep position, still report for UI
       return { accept: false, reason: 'still', point: pt };
@@ -126,44 +149,64 @@
     status: function () {
       return { supported: S.gps.supported, watching: S.gps.watching, last: S.gps.last, error: S.gps.error, secure: secure };
     },
-    // wait for a usable fix (accuracy better than goodAcc) up to timeoutMs, otherwise best fix seen
-    probe: function (timeoutMs, goodAcc) {
-      timeoutMs = timeoutMs || 15000; goodAcc = goodAcc || 20;
+    // One-shot fix for the "check signal" action. Resolves with the first fix
+    // (or a recent cached one) instead of waiting for a perfect accuracy.
+    probe: function (timeoutMs) {
+      timeoutMs = timeoutMs || 8000;
       return new Promise(function (resolve) {
         if (!S.gps.supported) { S.gps.error = 'This browser has no GPS support'; resolve(null); return; }
-        var best = null, done = false, id = null;
+        function recent() {
+          return (S.gps.last && Date.now() - S.gps.last.t < 10 * 60 * 1000) ? S.gps.last : null;
+        }
+        // A watch that is already running keeps a fresh fix; reuse it.
+        if (S.gps.watching && recent() && Date.now() - S.gps.last.t < 120000) { resolve(S.gps.last); return; }
+        var done = false, timer;
         function finish(v) {
           if (done) return; done = true;
           clearTimeout(timer);
-          if (id != null) { try { navigator.geolocation.clearWatch(id); } catch (e) {} }
           resolve(v);
         }
-        var timer = setTimeout(function () { finish(best); }, timeoutMs);
+        timer = setTimeout(function () { finish(recent()); }, timeoutMs);
         try {
-          id = navigator.geolocation.watchPosition(function (pos) {
+          navigator.geolocation.getCurrentPosition(function (pos) {
             var f = toFix(pos);
-            S.gps.last = f; S.gps.error = null;
-            if (!best || (f.accuracy != null && (best.accuracy == null || f.accuracy < best.accuracy))) best = f;
-            if (f.accuracy != null && f.accuracy <= goodAcc) finish(f);
+            S.gps.last = f; S.gps.error = null; S.gps.denied = false;
+            saveLastFix(f);
+            finish(f);
           }, function (err) {
             S.gps.error = gpsErr(err);
-            if (err && err.code === 1) finish(null);
-          }, { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs });
-        } catch (e) { S.gps.error = String(e); finish(null); }
+            if (err && err.code === 1) S.gps.denied = true;
+            finish(err && err.code === 1 ? null : recent());
+          }, { enableHighAccuracy: true, maximumAge: 30000, timeout: timeoutMs });
+        } catch (e) {
+          S.gps.error = String(e);
+          finish(recent());
+        }
       });
     },
     start: function (onFix, onError) {
       if (!S.gps.supported) { if (onError) onError('This browser has no GPS support'); return false; }
-      if (S.gps.watchId != null) gps.stop();
+      if (onFix) S.gps.onFix = onFix;
+      if (onError) S.gps.onError = onError;
+      // Do not hammer watchPosition (and the user with error toasts) while the
+      // permission is denied; probe() can recover it once the user allows it.
+      if (S.gps.denied) { S.gps.watching = false; return false; }
+      // Keep the existing watch alive. Restarting it here used to discard the
+      // fix we had just primed and added 10-20 seconds before recording began.
+      if (S.gps.watchId != null) { S.gps.watching = true; return true; }
       try {
         S.gps.watchId = navigator.geolocation.watchPosition(function (pos) {
           var fix = toFix(pos);
-          S.gps.last = fix; S.gps.watching = true; S.gps.error = null;
-          if (onFix) onFix(fix);
+          S.gps.last = fix; S.gps.watching = true; S.gps.error = null; S.gps.denied = false;
+          saveLastFix(fix);
+          if (S.gps.onFix) S.gps.onFix(fix);
         }, function (err) {
           S.gps.error = gpsErr(err);
-          if (onError) onError(S.gps.error, err && err.code);
-        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+          // A denied permission kills the watch for good; drop the id so a
+          // later start can ask again (e.g. after the user changes the setting).
+          if (err && err.code === 1) { S.gps.watching = false; S.gps.watchId = null; S.gps.denied = true; }
+          if (S.gps.onError) S.gps.onError(S.gps.error, err && err.code);
+        }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
         S.gps.watching = true;
         wake.request();
         return true;

@@ -9,17 +9,20 @@
   const t = key => D.t(key, 'en');
 
   const Merc = {
+    x(lng) { return (lng + 180) / 360; },
+    y(lat) {
+      const lr = clamp(lat, -85.05112878, 85.05112878) * D2R;
+      return 0.5 - Math.log(Math.tan(Math.PI / 4 + lr / 2)) / (2 * Math.PI);
+    },
+    lng(x) { return x * 360 - 180; },
+    lat(y) { return Math.atan(Math.sinh(Math.PI - 2 * Math.PI * y)) / D2R; },
     world(lat, lng, z) {
       const ws = 256 * Math.pow(2, z);
-      const lr = clamp(lat, -85.0511, 85.0511) * D2R;
-      return [(lng + 180) / 360 * ws,
-              (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * ws];
+      return [Merc.x(lng) * ws, Merc.y(lat) * ws];
     },
     inv(wx, wy, z) {
       const ws = 256 * Math.pow(2, z);
-      const lng = wx / ws * 360 - 180;
-      const n = Math.PI - 2 * Math.PI * wy / ws;
-      return { lat: 180 / Math.PI * Math.atan(Math.sinh(n)), lng: lng };
+      return { lat: Merc.lat(wy / ws), lng: Merc.lng(wx / ws) };
     }
   };
   const coord = (lat, lng) => D.fmtCoord(lat, lng);
@@ -344,18 +347,24 @@
       this.sctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       this.staticDirty = true;
     }
+    worldSize() {
+      // Pixels for the whole Mercator world at this map scale. Keeping the
+      // scale in "pixels per degree of latitude at the centre" means the scale
+      // bar and the existing zoom limits stay meaningful.
+      return 360 * this.scale * Math.cos(this.center.lat * D2R);
+    }
     project(lat, lng) {
-      const k = Math.cos(this.center.lat * D2R);
+      const ws = this.worldSize();
       return [
-        (lng - this.center.lng) * k * this.scale + this.w / 2 + this.panX,
-        -(lat - this.center.lat) * this.scale + this.h / 2 + this.panY
+        (Merc.x(lng) - Merc.x(this.center.lng)) * ws + this.w / 2 + this.panX,
+        (Merc.y(lat) - Merc.y(this.center.lat)) * ws + this.h / 2 + this.panY
       ];
     }
     unproject(x, y) {
-      const k = Math.cos(this.center.lat * D2R);
+      const ws = this.worldSize();
       return {
-        lat: this.center.lat - (y - this.h / 2 - this.panY) / this.scale,
-        lng: this.center.lng + (x - this.w / 2 - this.panX) / (this.scale * k)
+        lat: Merc.lat(Merc.y(this.center.lat) + (y - this.h / 2 - this.panY) / ws),
+        lng: Merc.lng(Merc.x(this.center.lng) + (x - this.w / 2 - this.panX) / ws)
       };
     }
     cssVar(n) { return this.colors[n]; }
@@ -618,7 +627,7 @@
       if (!f || !isFinite(f.lat) || !isFinite(f.lng)) return;
       const p = this.project(f.lat, f.lng);
       if (p[0] < -60 || p[0] > this.w + 60 || p[1] < -60 || p[1] > this.h + 60) return;
-      const mPerPx = 111320 / this.scale;
+      const mPerPx = 111320 * Math.cos(f.lat * D2R) / (this.scale * Math.cos(this.center.lat * D2R));
       const rr = Math.max(10, (f.accuracy || 0) / mPerPx);
       c.beginPath(); c.arc(p[0], p[1], rr, 0, Math.PI * 2);
       c.fillStyle = 'rgba(47,111,237,.14)'; c.fill();
@@ -645,8 +654,10 @@
     }
 
     tileZoom() {
-      const k = Math.cos(this.center.lat * D2R);
-      return clamp(Math.round(Math.log2(Math.max(1, this.scale * k / 0.7111))), 2, 19);
+      // Round up: tile images are then never enlarged past their native 256px,
+      // which keeps streets and labels crisp instead of blurry.
+      const z = Math.log2(Math.max(1, this.worldSize() / 256));
+      return clamp(Math.ceil(z), 2, 19);
     }
     ensureTileLayer() {
       if (this.tileLayer) return this.tileLayer;
@@ -664,7 +675,7 @@
     }
     maybeTilesFailed(force) {
       if (this.tiles.failed || this.tiles.ok > 0 || !this.osm) return;
-      if (force || this.tiles.fail >= 3) {
+      if (force || this.tiles.fail >= 6) {
         this.tiles.failed = true;
         if (this.opts.onTilesFailed) this.opts.onTilesFailed();
       }
@@ -672,16 +683,16 @@
     renderTiles() {
       const layer = this.ensureTileLayer();
       const z = this.tileZoom(); this.tiles.z = z;
-      const W = this.w, H = this.h, pad = 320;
+      const W = this.w, H = this.h, pad = 160;
+      // Web Mercator is monotonic, so the four padded corners bound every
+      // tile that can touch the viewport.
       let minWX = Infinity, maxWX = -Infinity, minWY = Infinity, maxWY = -Infinity;
-      for (let sy = -pad; sy <= H + pad; sy += Math.max(72, H / 6)) {
-        for (let sx = -pad; sx <= W + pad; sx += Math.max(72, W / 6)) {
-          const g = this.unproject(sx, sy);
-          const w = Merc.world(g.lat, g.lng, z);
-          minWX = Math.min(minWX, w[0]); maxWX = Math.max(maxWX, w[0]);
-          minWY = Math.min(minWY, w[1]); maxWY = Math.max(maxWY, w[1]);
-        }
-      }
+      [[-pad, -pad], [W + pad, -pad], [-pad, H + pad], [W + pad, H + pad]].forEach(corner => {
+        const g = this.unproject(corner[0], corner[1]);
+        const w = Merc.world(g.lat, g.lng, z);
+        minWX = Math.min(minWX, w[0]); maxWX = Math.max(maxWX, w[0]);
+        minWY = Math.min(minWY, w[1]); maxWY = Math.max(maxWY, w[1]);
+      });
       const n = Math.pow(2, z);
       const x0 = Math.max(0, Math.floor(minWX / 256)), x1 = Math.min(n - 1, Math.floor(maxWX / 256));
       const y0 = Math.max(0, Math.floor(minWY / 256)), y1 = Math.min(n - 1, Math.floor(maxWY / 256));
@@ -693,8 +704,12 @@
           let img = this.tiles.imgs.get(key);
           if (!img) {
             img = new Image();
-            img.alt = ''; img.draggable = false; img.className = 'osm-tile';
-            img.onload = () => { this.tiles.ok++; this.setAttribution(true); };
+            img.alt = ''; img.draggable = false; img.decoding = 'async'; img.className = 'osm-tile';
+            img.onload = () => {
+              this.tiles.ok++;
+              if (this.tiles.timer) { clearTimeout(this.tiles.timer); this.tiles.timer = null; }
+              this.setAttribution(true);
+            };
             img.onerror = () => { this.tiles.fail++; img.style.display = 'none'; this.maybeTilesFailed(false); };
             img.src = 'https://tile.openstreetmap.org/' + z + '/' + tx + '/' + ty + '.png';
             layer.appendChild(img);
@@ -710,10 +725,21 @@
         }
       }
       this.tiles.imgs.forEach((img, key) => { if (!need.has(key)) { img.remove(); this.tiles.imgs.delete(key); } });
-      if (!this.tiles.timer) this.tiles.timer = setTimeout(() => this.maybeTilesFailed(true), 7000);
+      if (!this.tiles.timer && this.tiles.ok === 0) {
+        this.tiles.timer = setTimeout(() => { this.tiles.timer = null; this.maybeTilesFailed(true); }, 15000);
+      }
     }
     setBasemap(osm) {
-      this.osm = !!osm;
+      const want = !!osm;
+      // Tapping "Street map" again retries after a slow/failed load instead of
+      // leaving the map stuck on the schematic fallback.
+      if (want && this.tiles.failed) {
+        this.tiles.failed = false; this.tiles.ok = 0; this.tiles.fail = 0;
+        if (this.tiles.timer) { clearTimeout(this.tiles.timer); this.tiles.timer = null; }
+        if (this.tileLayer) this.tileLayer.innerHTML = '';
+        this.tiles.imgs.clear();
+      }
+      this.osm = want;
       if (!this.osm && this.tileLayer) {
         this.tileLayer.remove(); this.tileLayer = null;
         this.tiles.imgs.clear();
@@ -1676,47 +1702,61 @@
   function useDeviceGps() {
     const r = state.rec;
     if (!SENS() || !SENS().gps.available()) { toast('This browser has no GPS. Open RUCHA on your phone.'); return; }
-    toast('Waiting for a GPS fix. Stay outside with a clear view of the sky.');
     r.gpsState = 'searching'; refreshGpsPill();
-    SENS().gps.probe(20000, 15).then(fix => {
+    toast('Checking GPS signal…');
+    SENS().gps.probe(8000).then(fix => {
       if (!fix) {
         r.gpsState = 'lost'; refreshGpsPill();
-        toast(SENS().gps.status().error || 'No GPS fix yet');
+        toast(SENS().gps.status().error || 'No GPS fix yet — move outside with a clear view of the sky');
         return;
       }
-      r.mode = 'gps'; r.gpsAccuracy = fix.accuracy != null ? fix.accuracy : null;
-      r.lastFix = fix; r.gpsState = gpsQuality(fix.accuracy);
-      if (state.mapEngine) {
-        state.mapEngine.center = { lat: fix.lat, lng: fix.lng };
-        state.mapEngine.panX = 0; state.mapEngine.panY = 0;
-        state.mapEngine.userFix = fix;
-        state.mapEngine.scale = Math.max(state.mapEngine.scale, 16000);
-        state.mapEngine.invalidate();
-      }
-      if (r.challengeId) updateGeofence(fix.lat, fix.lng);
-      refreshGpsPill();
-      toast('GPS ready · accuracy ±' + Math.round(fix.accuracy || 0) + ' m');
+      // Paint the first fix immediately, then keep the watch running so the
+      // position keeps refining instead of freezing on a coarse network fix.
+      const watching = SENS().gps.start(applyGpsFix, gpsWatchError);
+      applyGpsFix(fix);
+      if (watching) toast('GPS ready · accuracy ±' + Math.round(fix.accuracy || 0) + ' m');
+      else toast(SENS().gps.status().error || 'Position found, but live tracking could not start');
     });
+  }
+  function gpsWatchError(msg, code) {
+    if (code === 3) return; // transient timeout while standing still
+    state.rec.gpsState = 'lost';
+    refreshGpsPill();
+    if (msg && (code === 1 || code == null)) toast(msg);
   }
   function primeGps() {
     const r = state.rec;
-    if (!SENS() || !SENS().gps.available() || r.primed) return;
-    r.primed = true;
-    r.gpsState = 'searching'; refreshGpsPill();
-    SENS().gps.probe(12000, 25).then(fix => {
-      r.primed = false;
-      if (!fix) { r.gpsState = 'lost'; refreshGpsPill(); return; }
-      r.lastFix = fix; r.gpsAccuracy = fix.accuracy; r.gpsState = gpsQuality(fix.accuracy);
+    if (!SENS() || !SENS().gps.available()) return;
+    const g = SENS().gps;
+    // Restore the cached fix at once so the map is useful while the phone
+    // waits for its first live satellite fix.
+    const cached = g.status().last;
+    if (cached && (!r.lastFix || (r.lastFix.t || 0) < (cached.t || 0))) {
+      r.lastFix = cached;
+      r.lastFixAt = cached.t || Date.now();
+      if (cached.accuracy != null) r.gpsAccuracy = cached.accuracy;
+      // A fix from hours ago is useful as a starting position, but it must not
+      // be dressed up as a live strong signal.
+      r.gpsState = fixState(cached);
       const eng = state.mapEngine;
       if (eng && state.view === 'record') {
-        eng.userFix = fix;
-        eng.center = { lat: fix.lat, lng: fix.lng };
+        eng.userFix = cached;
+        eng.center = { lat: cached.lat, lng: cached.lng };
         eng.panX = 0; eng.panY = 0;
         eng.scale = Math.max(eng.scale, 16000);
-        eng.invalidate();
+        eng.staticDirty = true;
+        eng.render();
       }
-      refreshGpsPill();
-    });
+    } else if (!r.lastFix) {
+      r.gpsState = 'searching';
+    } else if (r.gpsState === 'idle') {
+      // Coming back after saving a run: reflect how old the retained fix is.
+      r.gpsState = fixState(r.lastFix);
+    }
+    refreshGpsPill();
+    // gps.start reuses an existing watch instead of restarting it, so pressing
+    // Record no longer throws away the fix we just primed.
+    g.start(applyGpsFix, gpsWatchError);
   }
   function gpsQuality(acc) {
     if (acc == null) return 'weak';
@@ -1724,10 +1764,15 @@
     if (acc <= 25) return 'ok';
     return 'weak';
   }
+  function fixState(fix) {
+    if (!fix) return 'searching';
+    const fresh = Date.now() - (fix.t || 0) <= 60000;
+    return fresh ? gpsQuality(fix.accuracy) : 'cached';
+  }
   function refreshGpsPill() {
     const el = $('#gpsPill'); if (!el) return;
     const r = state.rec;
-    const map = { idle: ['', 'GPS off'], searching: ['', 'Searching for GPS…'], good: ['green', 'GPS strong'], ok: ['green', 'GPS ok'], weak: ['', 'GPS weak'], lost: ['', 'No GPS signal'] };
+    const map = { idle: ['', 'GPS off'], searching: ['', 'Searching for GPS…'], good: ['green', 'GPS strong'], ok: ['green', 'GPS ok'], weak: ['', 'GPS weak'], cached: ['', 'Last GPS fix'], lost: ['', 'No GPS signal'] };
     const m = map[r.gpsState] || map.idle;
     el.className = 'pill ' + m[0];
     el.textContent = m[1] + (r.gpsAccuracy != null && r.gpsState !== 'lost' && r.gpsState !== 'idle' ? ' · ±' + Math.round(r.gpsAccuracy) + ' m' : '');
@@ -1791,25 +1836,34 @@
     if (!SENS()) return false;
     const r = state.rec;
     r.filter = new (SENS().gps.Filter)({
-      maxAccuracy: r.type === 'ride' ? 30 : 25,
+      maxAccuracy: r.type === 'ride' ? 50 : 45,
       maxSpeed: r.type === 'ride' ? 22 : 9,
       minMove: r.type === 'ride' ? 4 : 3
     });
-    r.lastFix = null; r.lastFixAt = 0; r.gpsState = 'searching';
-    return SENS().gps.start(fix => applyGpsFix(fix), (msg, code) => {
-      if (code === 3) return;            // no new fix for a while (standing still): not an error
-      r.gpsState = 'lost'; refreshGpsPill();
-      if (msg && (code === 1 || code == null)) toast(msg);
-    });
+    // Keep the primed fix: it becomes the first point and the map is already
+    // centred, instead of clearing everything and waiting for another fix.
+    r.gpsState = 'searching'; refreshGpsPill();
+    return SENS().gps.start(applyGpsFix, gpsWatchError);
   }
   function applyGpsFix(fix) {
     const r = state.rec;
     if (!isFinite(fix.lat) || !isFinite(fix.lng)) return;
+    const first = !r.lastFix;
     r.lastFix = fix; r.lastFixAt = Date.now();
     if (fix.accuracy != null) r.gpsAccuracy = fix.accuracy;
     r.gpsState = gpsQuality(fix.accuracy);
     refreshGpsPill();
-    if (state.mapEngine) state.mapEngine.userFix = fix;
+    if (state.mapEngine) {
+      state.mapEngine.userFix = fix;
+      // The first fix zooms the record map to street level; later fixes only
+      // follow the runner and leave a zoom level they chose alone.
+      if (state.view === 'record' && first && r.status !== 'running' && r.status !== 'paused') {
+        state.mapEngine.center = { lat: fix.lat, lng: fix.lng };
+        state.mapEngine.panX = 0; state.mapEngine.panY = 0;
+        state.mapEngine.scale = Math.max(state.mapEngine.scale, 16000);
+        state.mapEngine.staticDirty = true;
+      }
+    }
     if (r.challengeId) updateGeofence(fix.lat, fix.lng);
     if (r.status !== 'running' || r.mode !== 'gps' || !r.filter) {
       if (state.mapEngine && state.view === 'record') followUser(fix);
@@ -1923,7 +1977,7 @@
       '<div class="card"><div class="card-head"><div><div class="card-title">' + t('nav.segments') + '</div><div class="card-sub">' + t('seg.sub') + '</div></div></div>' +
       '<div style="padding:8px 0 4px">' + segRows + '</div></div>' +
       '<div class="card card-pad"><div class="insight-title" style="margin-bottom:10px">' + icon('layers') + ' Two maps, one set of lines</div>' +
-      '<p class="insight-text">The offline map is drawn on-device and works with no signal on the Entoto trails. Switch to OpenStreetMap for real street tiles of Ethiopia underneath the exact same GPS lines, start pins and kilometre markers. If tiles cannot load, RUCHA falls back to the offline map automatically.</p>' +
+      '<p class="insight-text">The offline map is drawn on-device and works with no signal on the Entoto trails. Switch to OpenStreetMap for real street tiles of Ethiopia underneath the exact same GPS lines, start pins and kilometre markers. If tiles load slowly, tap Street map again to retry, or keep the offline overview.</p>' +
       '<div class="hint-row"><span class="pill green">' + icon('check') + ' Distinct route colours</span>' +
       '<span class="pill">' + icon('target') + ' Green start · orange finish</span></div></div></div>';
   }
@@ -2598,11 +2652,7 @@
 
   function tilesFailed() {
     if (state.basemap === 'osm') {
-      state.basemap = 'offline';
-      if (state.mapEngine) state.mapEngine.setBasemap(false);
-      if (state.modalMapEngine) state.modalMapEngine.setBasemap(false);
-      $$('[data-basemap]').forEach(b => b.classList.toggle('active', b.getAttribute('data-basemap') === 'offline'));
-      toast('Street tiles unavailable — switched to the offline map');
+      toast('Street map is slow to load — tap Street map again to retry, or Plain for the offline overview');
     }
   }
   function fitEngineToPoints(eng, a, b) {
@@ -2842,11 +2892,9 @@
     r.autoStop = r.goalKm > 0; r.goalHit = false; r.goalElapsed = 0;
     if (state.joinedChallenges.indexOf(id) < 0) { state.joinedChallenges.push(id); API().joinChallenge(id, 'me'); }
     setView('record');
-    if (hasRoute(c) && SENS()) {
-      SENS().gps.start(fix => {
-        if (state.view !== 'record' || state.rec.challengeId !== id) return;
-        updateGeofence(fix.lat, fix.lng);
-      }, () => {});
+    if (hasRoute(c)) {
+      // The record view's own watch (primeGps → applyGpsFix) updates the
+      // geofence. Starting a second watch here produced duplicate fixes.
       toast('Recording is locked to the start at ' + (c.startName || 'Point A'));
     } else {
       r.geofenceOk = true;
@@ -3035,7 +3083,16 @@
     }
     if (!startGpsWatch()) { toast(SENS().gps.status().error || 'Could not start GPS'); return; }
     r.status = 'running';
-    toast('Recording started. Waiting for your first GPS point.');
+    // If the prime pass already has a recent fix, put the first point on the
+    // map now instead of showing 0.00 km until the next satellite callback.
+    const seed = r.lastFix;
+    let seeded = false;
+    if (seed && Date.now() - (seed.t || 0) <= 60000 &&
+        (seed.accuracy == null || seed.accuracy <= 45)) {
+      applyGpsFix(seed);
+      seeded = true;
+    }
+    toast(seeded ? 'Recording started.' : 'Recording started. Waiting for your first GPS point.');
     loopRecorder();
   }
   function loopRecorder() {
@@ -3225,7 +3282,7 @@
         if (tr0.length) { syncLiveMap(); }
         else eng.render();
         refreshGpsPill();
-        if (r0.status === 'idle' && !r0.lastFix) primeGps();
+        if (r0.status === 'idle') primeGps();
       }
     }
     $$('canvas[data-mini]').forEach(cv => drawMini(cv, state.activities.find(a => a.id === cv.getAttribute('data-mini'))));
@@ -3343,7 +3400,7 @@
       if (state.mapEngine) state.mapEngine.setBasemap(want === 'osm');
       if (state.modalMapEngine) state.modalMapEngine.setBasemap(want === 'osm');
       $$('.map-mode').forEach(el => el.textContent = want === 'osm' ? 'OPENSTREETMAP · ETHIOPIA' : 'RUCHA MAPS · OFFLINE');
-      toast(want === 'osm' ? 'Loading OpenStreetMap street tiles of Ethiopia — falls back to offline if unavailable' : 'Switched to the offline map');
+      toast(want === 'osm' ? 'Loading OpenStreetMap street tiles — tap Street map again to retry if they are slow' : 'Switched to the offline overview');
       return;
     }
     const fa = e.target.closest('[data-friend-accept]');
@@ -3401,7 +3458,21 @@
     }
     const zoom = e.target.closest('[data-map-zoom]');
     if (zoom && state.mapEngine) { state.mapEngine.zoom(parseFloat(zoom.getAttribute('data-map-zoom'))); return; }
-    if (e.target.closest('[data-map-recenter]') && state.mapEngine) { state.mapEngine.recenter(); return; }
+    const rc = e.target.closest('[data-map-recenter]');
+    if (rc && state.mapEngine) {
+      const eng = state.mapEngine;
+      if (eng.userFix) { eng.recenter(); return; }
+      if (SENS() && SENS().gps.available()) {
+        toast('Finding your location…');
+        SENS().gps.probe(8000).then(fix => {
+          if (fix) { eng.userFix = fix; eng.recenter(); }
+          else toast(SENS().gps.status().error || 'No GPS signal yet — try again outside');
+        });
+      } else {
+        eng.recenter();
+      }
+      return;
+    }
     const mf = e.target.closest('[data-map-filter]');
     if (mf) {
       state.mapFilter = mf.getAttribute('data-map-filter');
