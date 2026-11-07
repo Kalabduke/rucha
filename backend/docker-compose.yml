@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rucha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rucha}
+      POSTGRES_DB: ${POSTGRES_DB:-rucha}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rucha} -d ${POSTGRES_DB:-rucha}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-rucha}:${POSTGRES_PASSWORD:-rucha}@db:5432/${POSTGRES_DB:-rucha}?sslmode=disable
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      STATIC_DIR: /app/public
+      PORT: "8081"
+    ports:
+      - "8081:8081"
+    volumes:
+      - ..:/app/public:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,20 @@
+# Local configuration and secrets
+.env
+backend/.env
+
+# Go build output
+backend/backend
+backend/bin/
+*.exe
+*.test
+*.out
+
+# Postgres data (if a local volume is ever mounted to a folder)
+pgdata/
+
+# Logs and OS/editor junk
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="RUCHA: record runs and rides with GPS, climb local segments and train with friends in Ethiopia.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 40%27%3E%3Crect width=%2740%27 height=%2740%27 rx=%278%27 fill=%27%23121A18%27/%3E%3Cpath d=%27M8 27 L15 17 L20 22 L27 10 L33 20%27 fill=%27none%27 stroke=%27%23FF5A1F%27 stroke-width=%273.4%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
+<title>RUCHA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="40" height="40">
+          <circle cx="20" cy="20" r="19" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1"/>
+          <path d="M8 27 L15 17 L20 22 L27 10 L33 20" fill="none" stroke="#FF6B35" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="27" cy="10" r="3.4" fill="#F2B705"/>
+          <circle cx="8" cy="27" r="2.6" fill="#12A88A"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name">RUCHA</div>
+        <div class="brand-sub">ETHIOPIA</div>
+      </div>
+    </div>
+
+    <div class="flag-strip" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="nav-label">MENU</div>
+    <nav class="nav" id="mainNav"></nav>
+
+    <div class="side-spacer"></div>
+
+    <button class="side-user side-user-btn" id="sideAccountBtn" aria-label="Account">
+      <div class="avatar avatar-me" id="sideAvatar">ME</div>
+      <div class="side-user-text">
+        <b id="sideUserName">You</b><span id="sideUserCity">Addis Ababa</span>
+      </div>
+          </button>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Menu"><span data-icon="menu"></span></button>
+      <div class="crumbs">
+        <div class="crumb-title" id="crumbTitle">Dashboard</div>
+        <div class="crumb-sub" id="crumbSub">Addis Ababa · 2,355 m</div>
+      </div>
+      <div class="top-actions">
+        <button class="live-badge" id="liveBadge" data-nav="record" hidden aria-label="Back to the live recording"><span class="live-dot"></span><span class="live-badge-text">Recording</span></button>
+        <label class="search-box">
+          <span data-icon="search"></span>
+          <input id="globalSearch" type="search" data-i18n-ph="top.search" autocomplete="off">
+                  </label>
+        <button class="icon-btn" id="themeToggle" title="Toggle theme"><span data-icon="moon"></span></button>
+        <button class="btn btn-primary btn-record" id="recordBtn"><span class="rec-dot"></span><span data-i18n="top.record"></span></button>
+        <button class="account-chip" id="accountBtn" aria-label="Account">
+          <span class="avatar avatar-me top-avatar" id="accountAvatar">ME</span>
+          <span class="account-name" id="accountName">Sign in</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content" id="viewRoot"></div>
+  </main>
+</div>
+
+<nav class="mobile-nav" id="mobileNav"></nav>
+
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+
+<div class="map-tooltip" id="mapTooltip"></div>
+
+<script src="data.js"></script>
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script src="sensors.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
