@@ -16,7 +16,7 @@ import (
 var auth Auth
 
 const (
-	minPasswordLength = 10
+	minPasswordLength = 5
 	privacyVersion    = "2026-11-07"
 	termsVersion      = "2026-11-07"
 )
@@ -34,7 +34,7 @@ var (
 	errUserTaken    = errors.New("That username is already taken")
 	errReservedName = errors.New("That username is reserved")
 	errBadUsername  = errors.New("Username must be 3-20 characters: letters, numbers and _ only")
-	errBadPassword  = errors.New("Password must be at least 10 characters")
+	errBadPassword  = errors.New("Password must be at least 5 characters")
 	errBadCreds     = errors.New("Wrong username or password")
 	errNoUser       = errors.New("User not found")
 	errNotAuthed    = errors.New("Sign in required")

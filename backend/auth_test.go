@@ -152,7 +152,7 @@ func TestCompleteProfileRejectsTakenUsername(t *testing.T) {
 	if _, _, err := a.CompleteProfile(tok, "not valid", "longenough2", "Second", testConsent()); !errors.Is(err, errBadUsername) {
 		t.Fatalf("complete with invalid name: got %v, want %v", err, errBadUsername)
 	}
-	if _, _, err := a.CompleteProfile(tok, "second_name", "short", "Second", testConsent()); !errors.Is(err, errBadPassword) {
+	if _, _, err := a.CompleteProfile(tok, "second_name", "four", "Second", testConsent()); !errors.Is(err, errBadPassword) {
 		t.Fatalf("complete with short password: got %v, want %v", err, errBadPassword)
 	}
 }
