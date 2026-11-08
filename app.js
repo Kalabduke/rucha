@@ -84,7 +84,9 @@
     download: '<path d="M12 3v12M7 11l5 5 5-5M4 20h16"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
     copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
-    blur: '<circle cx="12" cy="12" r="9"/><path d="M7 12h10M9 8.5h8M9 15.5h8" stroke-dasharray="2 3"/>'
+    blur: '<circle cx="12" cy="12" r="9"/><path d="M7 12h10M9 8.5h8M9 15.5h8" stroke-dasharray="2 3"/>',
+    eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/>',
+    eyeOff: '<path d="M3 3l18 18M10.6 6.2A10.9 10.9 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3.2 3.9M6.1 6.8C3.5 8.6 2 12 2 12s3.5 6 10 6c1.8 0 3.4-.5 4.8-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
   };
   function icon(name, cls) {
     const paths = P[name] || P.info;
@@ -1082,12 +1084,38 @@
         '<div class="feed-thumb"><canvas data-mini="' + a.id + '"></canvas></div></div>').join('') +
       '</div></div>';
   }
+  function quickStartDone() {
+    try { return localStorage.getItem('rucha_quickstart_v1') === 'done'; } catch (e) { return false; }
+  }
+  function quickStartHtml() {
+    if (quickStartDone()) return '';
+    const steps = [
+      ['crosshair', 'Allow location', 'Tap Record and allow precise location. RUCHA reads GPS only while a recording is running — never in the background.'],
+      ['record', 'Record your run or ride', 'Keep the phone with you. Distance goals, auto-pause and live GPS accuracy are all on the record screen.'],
+      ['shield', 'Keep it private', 'Every activity starts private. Share a single run or open it to friends and the community when you choose.'],
+      ['segments', 'Explore Ethiopia', 'Climb local segments, join challenges, make a run card in the gallery and find people by their unique username.']
+    ];
+    return '<section class="quick-start" aria-labelledby="quickStartTitle">' +
+      '<div class="quick-start-head"><span class="quick-start-kicker">' + icon('sparkles') + ' Quick Start</span>' +
+      '<button class="quick-start-close" data-action="quickstart-dismiss" aria-label="Dismiss Quick Start">' + icon('close') + '</button></div>' +
+      '<div class="quick-start-intro"><h2 id="quickStartTitle">Welcome to RUCHA</h2>' +
+      '<p>Four things to know before your first kilometre.</p></div>' +
+      '<div class="quick-start-grid">' + steps.map((x, i) =>
+        '<div class="quick-step"><span class="quick-step-ic">' + icon(x[0]) + '</span>' +
+        '<div><b><em>' + (i + 1) + '</em> ' + x[1] + '</b><p>' + x[2] + '</p></div></div>').join('') +
+      '</div>' +
+      '<div class="quick-start-foot"><a class="btn btn-primary btn-sm" href="help.html" target="_blank" rel="noopener">' +
+      icon('info') + ' Read the full guide</a>' +
+      '<a class="btn btn-ghost btn-sm" href="privacy.html" target="_blank" rel="noopener">' + icon('shield') + ' Privacy</a>' +
+      '<button class="btn btn-ghost btn-sm" data-action="quickstart-dismiss">' + icon('check') + ' Got it</button></div></section>';
+  }
   function viewDashboard() {
     const recent = myActivities().sort((a, b) => b.date - a.date).slice(0, 5);
     const empty = '<div class="card card-pad" style="margin-top:18px"><div class="insight-title">Your activities</div>' +
       '<p class="muted" style="margin:8px 0 14px">' + (meUser() ? 'Nothing recorded yet. Your first run or ride will show up here and on the map.' : 'Sign in to record and see your activities.') + '</p>' +
-      '<button class="btn btn-primary btn-sm" data-nav="record">' + icon('play') + ' Start recording</button></div>';
-    return dashHead() + statsHtml() +
+      '<button class="btn btn-primary btn-sm" data-nav="record">' + icon('play') + ' Start recording</button>' +
+      ' <a class="text-link" href="help.html" target="_blank" rel="noopener">How RUCHA works</a></div>';
+    return dashHead() + quickStartHtml() + statsHtml() +
       '<div class="dash-grid">' + dashboardMapCard() + insightCards() + '</div>' +
       (recent.length ? feedHtml(recent, t('feed.title'), true) : empty);
   }
@@ -1100,22 +1128,25 @@
   }
   const AUTH = () => window.RUCHA_AUTH;
   function meUser() { const A = AUTH(); return A && A.me ? A.me() : null; }
-  function myId() { const u = meUser(); return u ? u.id : ''; }
-  function myName() { const u = meUser(); return u ? u.username : 'You'; }
+  function myId() { const u = meUser(); return u && u.profileComplete !== false ? u.id : ''; }
+  function myName() { const u = meUser(); return u && u.profileComplete !== false ? u.username : 'You'; }
 
   function updateAccountChip() {
-    const u = meUser(), nm = u ? u.username : 'Sign in';
-    const ini = u ? u.username.slice(0, 2).toUpperCase() : 'ME';
+    const u = meUser(), pending = u && u.profileComplete === false;
+    const nm = pending ? 'Finish account' : (u ? u.username : 'Sign in');
+    const ini = u ? (pending ? '…' : u.username.slice(0, 2).toUpperCase()) : 'ME';
     const set = (id, v) => { const el = $('#' + id); if (el) el.textContent = v; };
     set('accountAvatar', ini); set('accountName', nm);
     set('sideAvatar', ini);
-    set('sideUserName', u ? (u.displayName || u.username) : 'You');
-    set('sideUserCity', u ? (u.local ? 'Local account · Addis Ababa' : 'Addis Ababa') : 'Addis Ababa');
-    const b = $('#accountBtn'); if (b) b.classList.toggle('signed-in', !!u);
+    set('sideUserName', pending ? 'Finish your account' : (u ? (u.displayName || u.username) : 'You'));
+    set('sideUserCity', pending ? 'Choose username & password' : (u ? (u.local ? 'Local account · Addis Ababa' : 'Addis Ababa') : 'Addis Ababa'));
+    const b = $('#accountBtn'); if (b) b.classList.toggle('signed-in', !!u && !pending);
+    const sb = $('#sideAccountBtn'); if (sb) sb.classList.toggle('signed-in', !!u && !pending);
   }
   function requireAccount(msg) {
-    if (meUser()) return true;
-    toast(msg || 'Create an account or sign in first');
+    const u = meUser();
+    if (u && u.profileComplete !== false) return true;
+    toast(msg || (u ? 'Finish creating your account first' : 'Create an account or sign in first'));
     openAccountModal();
     return false;
   }
@@ -1134,7 +1165,8 @@
   function openAccountModal() {
     const A = AUTH();
     if (!A) return;
-    if (!meUser()) { openAuthScreen(); return; }
+    const u = meUser();
+    if (!u || u.profileComplete === false) { openAuthScreen(); return; }
     const html = '<div class="modal-head">' +
       '<div class="ch-icon" style="background:#0B6E56">' + icon('users') + '</div>' +
       '<div><h3>Account and privacy</h3><p>Your activities are private until you share them</p></div>' +
@@ -1147,101 +1179,367 @@
 
   /* ---------- sign in ---------- */
   const TG_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21.9 4.3 18.7 19.5c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L5.1 13.1.2 11.6c-1.1-.3-1.1-1 .2-1.5L20.2 2.7c.9-.3 1.7.2 1.7 1.6z" transform="translate(1.1 1.4) scale(.9)"/></svg>';
-  const auth = { step: 'choose', cfg: null, loginId: '', link: '', bot: '', busy: false, error: '', gsiReady: false };
+  const APPLE_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16.7 12.9c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.7-3.1.7-.6 0-1.6-.7-2.7-.7-1.4 0-2.7.8-3.4 2.1-1.5 2.5-.4 6.2 1 8.2.7 1 1.5 2.1 2.6 2 1-.1 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.6 1.1 0 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.2-2.4-.1 0-2.3-.9-2.3-3zM14.6 6.6c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.7-1.1 1.7-.9 2.7 1 .1 2-.5 2.5-1.3z"/></svg>';
+  const PROVIDER_LABEL = { telegram: 'Telegram', google: 'Google', apple: 'Apple' };
+  const auth = {
+    step: 'create', cfg: null, loginId: '', link: '', bot: '', busy: false, error: '',
+    form: { displayName: '', username: '', password: '' },
+    consent: { acceptPrivacy: false, acceptTerms: false },
+    usernameState: '', usernameReason: '', showPassword: false,
+    pendingUser: null, provider: '', created: false
+  };
+  let userCheckTimer = null;
 
   function authScreenEl() { return $('#authScreen'); }
-  function openAuthScreen() {
-    if (authScreenEl()) return;
+  function isCompleteUser(u) { return !!u && u.profileComplete !== false; }
+  function providerLabel(p) { return PROVIDER_LABEL[p] || 'your account'; }
+  function authMinPassword() {
+    const A = AUTH();
+    return +((auth.cfg && auth.cfg.minPassword) || (A && A.minPassword) || 10);
+  }
+  function resetAuthConsent() {
+    // Consent must be an active choice, so the boxes always start empty.
+    auth.consent = { acceptPrivacy: false, acceptTerms: false };
+  }
+  function userNeedsConsent(u) {
+    if (!u || u.profileComplete === false) return false;
+    const A = AUTH();
+    const cfg = auth.cfg || {};
+    const pv = cfg.privacyVersion || (A && A.privacyVersion) || '2026-11-07';
+    const tv = cfg.termsVersion || (A && A.termsVersion) || '2026-11-07';
+    return u.privacyVersion !== pv || u.termsVersion !== tv;
+  }
+  function fmtConsentDate(s) {
+    if (!s) return '';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    try { return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); }
+    catch (e) { return ''; }
+  }
+  function consentObject() {
+    const A = AUTH();
+    return {
+      acceptPrivacy: !!auth.consent.acceptPrivacy,
+      acceptTerms: !!auth.consent.acceptTerms,
+      privacyVersion: (auth.cfg && auth.cfg.privacyVersion) || (A && A.privacyVersion) || '2026-11-07',
+      termsVersion: (auth.cfg && auth.cfg.termsVersion) || (A && A.termsVersion) || '2026-11-07'
+    };
+  }
+  function privacyLinksHtml() {
+    return '<a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="terms.html" target="_blank" rel="noopener">Terms of Use</a>';
+  }
+  function authBrandSvg(size) {
+    return '<svg viewBox="0 0 40 40" width="' + (size || 40) + '" height="' + (size || 40) + '" aria-hidden="true">' +
+      '<path d="M8 27 L15 17 L20 22 L27 10 L33 20" fill="none" stroke="#FF5A1F" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="27" cy="10" r="3.4" fill="#E8A700"/><circle cx="8" cy="27" r="2.6" fill="#0E8A6A"/></svg>';
+  }
+  function authShellHtml() {
+    return '<div class="auth-shell">' +
+      '<aside class="auth-hero">' +
+      '<div class="auth-orb auth-orb-gold" aria-hidden="true"></div>' +
+      '<div class="auth-orb auth-orb-green" aria-hidden="true"></div>' +
+      '<svg class="auth-hero-route" viewBox="0 0 540 320" aria-hidden="true"><path d="M-10 245 C70 220 90 150 155 168 S255 258 322 214 390 86 470 112 545 190 570 150" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="2.4" stroke-dasharray="1 10" stroke-linecap="round"/></svg>' +
+      '<div class="auth-brand">' + authBrandSvg(42) + '<div><b>RUCHA</b><span>ETHIOPIA</span></div></div>' +
+      '<div class="auth-hero-copy"><span class="auth-eyebrow">RUN · RIDE · ETHIOPIA</span>' +
+      '<h2>Every road is a route.</h2>' +
+      '<p>Record with GPS, climb the segments around you, and keep your miles with your people.</p></div>' +
+      '<div class="auth-chips"><span>' + icon('route') + ' GPS routes</span><span>' + icon('segments') + ' Local segments</span><span>' + icon('shield') + ' Private by default</span></div>' +
+      '<div class="auth-hero-foot"><span class="auth-flag" aria-hidden="true"><i></i><i></i><i></i></span>Addis Ababa · 2,355 m</div>' +
+      '</aside>' +
+      '<main class="auth-panel"><div class="auth-card" id="authCard"></div>' +
+      '<div class="auth-panel-foot"><a href="help.html" target="_blank" rel="noopener">How it works</a>' +
+      '<a href="privacy.html" target="_blank" rel="noopener">Privacy</a>' +
+      '<a href="terms.html" target="_blank" rel="noopener">Terms</a></div></main></div>';
+  }
+  function openAuthScreen(opts) {
+    opts = opts || {};
+    if (authScreenEl()) {
+      if (opts.step) { auth.step = opts.step; renderAuth(); }
+      return;
+    }
     const el = document.createElement('div');
     el.id = 'authScreen'; el.className = 'auth-screen';
-    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Sign in to RUCHA');
-    el.innerHTML =
-      '<aside class="auth-side">' +
-      '<div class="auth-brand"><svg viewBox="0 0 40 40" width="38" height="38" aria-hidden="true">' +
-      '<circle cx="20" cy="20" r="19" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>' +
-      '<path d="M8 27 L15 17 L20 22 L27 10 L33 20" fill="none" stroke="#FF5A1F" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<circle cx="27" cy="10" r="3.4" fill="#E8A700"/><circle cx="8" cy="27" r="2.6" fill="#0E8A6A"/></svg>' +
-      '<div><b>RUCHA</b><span>ETHIOPIA</span></div></div>' +
-      '<div class="flag-strip" aria-hidden="true"><i></i><i></i><i></i></div>' +
-      '<div class="auth-side-copy"><h2>Running and cycling in Ethiopia</h2>' +
-      '<p>Record routes with your phone\u2019s GPS, climb local segments, and train with friends.</p></div>' +
-      '<div class="auth-side-foot">Addis Ababa \u00B7 2,355 m</div>' +
-      '</aside>' +
-      '<main class="auth-main"><button class="auth-skip" data-auth="skip" type="button">Not now</button>' +
-      '<div class="auth-card" id="authCard"></div></main>';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Join or sign in to RUCHA');
+    el.innerHTML = authShellHtml();
     document.body.appendChild(el);
     document.body.classList.add('auth-open');
     el.addEventListener('click', onAuthClick);
     el.addEventListener('input', onAuthInput);
-    el.addEventListener('keydown', e => { if (e.key === 'Escape') closeAuthScreen(true); });
-    auth.step = 'choose'; auth.error = ''; auth.busy = false;
+    el.addEventListener('change', onAuthChange);
+    el.addEventListener('keydown', onAuthKeydown);
+
     const A = AUTH();
-    (A.config ? A.config() : Promise.resolve({})).then(cfg => { auth.cfg = cfg || {}; renderAuth(); });
+    auth.cfg = null; auth.error = ''; auth.busy = false; auth.showPassword = false;
+    auth.usernameState = ''; auth.usernameReason = '';
+    auth.loginId = ''; auth.link = ''; auth.bot = ''; auth.created = false;
+    resetAuthConsent();
+    const u = meUser();
+    const pending = u && !isCompleteUser(u);
+    auth.pendingUser = pending ? u : null;
+    auth.provider = pending && u.providers && u.providers.length ? u.providers[0] : '';
+    auth.form.displayName = pending ? (u.displayName || '') : '';
+    auth.form.username = '';
+    auth.form.password = '';
+    auth.step = pending ? 'complete' : (opts.step || 'create');
     renderAuth();
+    (A && A.config ? A.config() : Promise.resolve({})).then(cfg => {
+      auth.cfg = cfg || {};
+      const active = document.activeElement;
+      const focusId = active && active.id;
+      renderAuth();
+      if (focusId && $('#' + focusId)) { const f = $('#' + focusId); f.focus(); if (f.setSelectionRange && f.value) f.setSelectionRange(f.value.length, f.value.length); }
+    });
   }
+  function openConsentScreen() { openAuthScreen({ step: 'consent' }); }
   function closeAuthScreen(skipped) {
     const el = authScreenEl();
     if (el) el.remove();
     document.body.classList.remove('auth-open');
     if (skipped) { try { sessionStorage.setItem('rucha_skip_auth', '1'); } catch (e) {} }
   }
+  function captureAuthForm() {
+    const d = $('#authDisplay'), un = $('#authUsername'), pw = $('#authPassword');
+    if (d) auth.form.displayName = d.value;
+    if (un) auth.form.username = un.value;
+    if (pw) auth.form.password = pw.value;
+  }
   function authErr(msg) {
     auth.error = msg || ''; auth.busy = false;
     const e = $('#authError'); if (e) e.textContent = auth.error;
-    const b = $('#authCard') && $('#authCard').querySelector('[data-auth="verify"]');
-    if (b) { b.disabled = false; b.textContent = 'Sign in'; }
+    const b = $('#authSubmit'); if (b) { b.disabled = false; if (b.dataset.label) b.textContent = b.dataset.label; }
   }
-  function authDone() {
+  function setAuthBusy(on, label) {
+    const b = $('#authSubmit'); if (!b) return;
+    if (on) { b.dataset.label = b.textContent; b.disabled = true; b.textContent = label || 'Please wait…'; }
+    else { b.disabled = false; if (b.dataset.label) b.textContent = b.dataset.label; }
+  }
+  function completeOrDone(r) {
+    if (r && r.user && r.user.profileComplete === false) {
+      auth.pendingUser = r.user;
+      auth.provider = (r.user.providers && r.user.providers[0]) || auth.provider;
+      auth.form.displayName = r.user.displayName || auth.form.displayName;
+      auth.form.username = ''; auth.form.password = '';
+      auth.usernameState = ''; auth.usernameReason = '';
+      auth.step = 'complete'; auth.error = ''; auth.busy = false; auth.created = true;
+      renderAuth();
+      return;
+    }
+    authDone(r);
+  }
+  function authDone(r) {
+    const created = !!(auth.created || (r && r.created));
+    auth.created = false;
     closeAuthScreen(false);
-    toast('Signed in as @' + myName());
-    afterAuthChange();
+    try { sessionStorage.removeItem('rucha_skip_auth'); } catch (e) {}
+    const u = meUser();
+    const finish = () => {
+      if (u) toast(created ? 'Welcome to RUCHA, @' + u.username : 'Signed in as @' + u.username);
+      afterAuthChange();
+      if (userNeedsConsent(meUser())) openConsentScreen();
+    };
+    if (created && u) claimAndReload(finish); else finish();
+  }
+  function claimAndReload(done) {
+    const Api = API();
+    let claimed = false;
+    try { claimed = !!(Api && Api.claimAnonymous && Api.claimAnonymous()); } catch (e) {}
+    const uid = myId();
+    try {
+      const src = 'rucha_gallery_v1_anon', dst = 'rucha_gallery_v1_' + uid;
+      const raw = localStorage.getItem(src);
+      if (raw && uid) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          let cur = [];
+          try { cur = JSON.parse(localStorage.getItem(dst) || '[]'); } catch (e) {}
+          const ids = {};
+          cur.forEach(x => { if (x && x.id) ids[x.id] = 1; });
+          const merged = cur.concat(arr.filter(x => x && !ids[x.id]));
+          localStorage.setItem(dst, JSON.stringify(merged));
+          localStorage.removeItem(src);
+          claimed = true;
+        }
+      }
+    } catch (e) {}
+    loadGallery();
+    const p = Api && Api.getActivities ? Api.getActivities() : Promise.resolve([]);
+    Promise.resolve(p).then(list => {
+      (Array.isArray(list) ? list : []).forEach(raw => {
+        const a = normalizeActivity(raw);
+        if (a && !state.activities.some(x => x.id === a.id)) state.activities.push(a);
+      });
+    }).catch(() => {}).then(() => {
+      if (claimed) toast('Your offline activities now belong to this account');
+      done();
+    });
+  }
+  function usernameStatusText() {
+    const s = auth.usernameState;
+    if (s === 'checking') return 'Checking if @' + esc(auth.form.username) + ' is free…';
+    if (s === 'available') return '@' + esc(auth.form.username) + ' is available';
+    if (s === 'taken') return auth.usernameReason || 'That username is already taken. Try another.';
+    if (s === 'invalid') return auth.usernameReason || 'Use 3-20 lowercase letters, numbers or _.';
+    return 'Unique and permanent. Other people will find you by this name.';
+  }
+  function usernameFieldHtml() {
+    const cls = auth.usernameState ? ' ' + auth.usernameState : '';
+    return '<label class="auth-field" for="authUsername"><span class="auth-label">Username <em>unique</em></span>' +
+      '<div class="auth-input-wrap has-prefix"><span class="auth-prefix">@</span>' +
+      '<input id="authUsername" class="auth-input" type="text" inputmode="text" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="selam_runs" value="' + esc(auth.form.username) + '"></div>' +
+      '<span class="auth-hint' + cls + '" id="authUserStatus">' + usernameStatusText() + '</span></label>';
+  }
+  function passwordFieldHtml() {
+    return '<label class="auth-field" for="authPassword"><span class="auth-label">Password <em>' + authMinPassword() + '+ characters</em></span>' +
+      '<div class="auth-input-wrap has-action"><input id="authPassword" class="auth-input" type="' + (auth.showPassword ? 'text' : 'password') + '" autocomplete="new-password" placeholder="At least ' + authMinPassword() + ' characters" value="' + esc(auth.form.password) + '">' +
+      '<button class="auth-eye" id="authPasswordEye" data-auth="toggle-password" type="button" aria-label="' + (auth.showPassword ? 'Hide password' : 'Show password') + '">' + icon(auth.showPassword ? 'eyeOff' : 'eye') + '</button></div>' +
+      '<span class="auth-hint">Use letters and numbers. You can show it while typing.</span></label>';
+  }
+  function displayFieldHtml() {
+    return '<label class="auth-field" for="authDisplay"><span class="auth-label">Display name</span>' +
+      '<div class="auth-input-wrap"><input id="authDisplay" class="auth-input" type="text" maxlength="48" autocomplete="name" placeholder="Selam Tesfaye" value="' + esc(auth.form.displayName) + '"></div>' +
+      '<span class="auth-hint">This is the name your friends see on your profile and activities.</span></label>';
+  }
+  function consentBlockHtml() {
+    return '<label class="auth-consent"><input type="checkbox" id="authConsent"' + (auth.consent.acceptPrivacy && auth.consent.acceptTerms ? ' checked' : '') + '>' +
+      '<span class="auth-check" aria-hidden="true">' + icon('check') + '</span>' +
+      '<span>I accept the ' + privacyLinksHtml() + '. I understand that GPS is used only when I start a recording.</span></label>';
+  }
+  function authErrorHtml() {
+    return '<p class="auth-error" id="authError" role="alert">' + esc(auth.error) + '</p>';
+  }
+  function socialBlockHtml(offline, login) {
+    if (offline) {
+      return '<div class="auth-note">' + icon('offline') + '<span>The RUCHA server is offline. This account will be stored on this device and still works without internet.</span></div>';
+    }
+    const cfg = auth.cfg;
+    if (!cfg) return '<div class="auth-socials auth-socials-loading"><span></span><span></span></div>';
+    const hasTg = !!cfg.telegram, hasG = !!cfg.google, hasA = !!cfg.apple;
+    if (!hasTg && !hasG && !hasA) {
+      return '<div class="auth-note">' + icon('info') + '<span>Social sign-in is not set up on this server yet. ' +
+        (login ? 'Sign in with your username below' : 'Create a username below') +
+        ', or read <a href="help.html" target="_blank" rel="noopener">how RUCHA works</a>.</span></div>';
+    }
+    let h = '<div class="auth-socials">';
+    if (hasTg) {
+      h += '<button class="auth-tg" data-auth="telegram" type="button">' + TG_ICON +
+        '<span class="auth-tg-text">Continue with Telegram</span><span class="auth-tg-badge">Recommended</span></button>';
+    }
+    if (hasG || hasA) {
+      h += '<div class="auth-social-row' + (hasG && hasA ? ' two' : '') + '">';
+      if (hasG) h += '<div id="googleBtn" class="auth-google"></div>';
+      if (hasA) {
+        const secure = location.protocol === 'https:';
+        h += '<button class="auth-apple" type="button"' + (secure ? ' data-auth="apple"' : ' disabled title="Apple sign-in needs an HTTPS site"') + '>' +
+          APPLE_ICON + '<span>Continue with Apple</span></button>';
+      }
+      h += '</div>';
+      if (hasA && location.protocol !== 'https:') h += '<p class="auth-hint">Apple sign-in turns on when RUCHA is served over HTTPS with Apple credentials.</p>';
+    }
+    h += '</div>';
+    return h;
+  }
+  function authSwitchHtml(login) {
+    return '<p class="auth-switch">' + (login
+      ? 'New to RUCHA? <button class="auth-link" data-auth="create" type="button">Create an account</button>'
+      : 'Already have a RUCHA account? <button class="auth-link" data-auth="login" type="button">Sign in</button>') + '</p>';
+  }
+  function authFootHtml() {
+    return '<p class="auth-offline-link"><button class="auth-link-muted" data-auth="skip" type="button">Use without an account</button> · saved on this device</p>';
+  }
+  function createCardHtml(offline) {
+    return '<div class="auth-card-head"><span class="auth-kicker">' + (offline ? 'On this device' : 'Join RUCHA') + '</span>' +
+      '<h1>Create your account</h1>' +
+      '<p class="auth-lead">One username, one password. Your activities and routes belong to this account.</p></div>' +
+      socialBlockHtml(offline) +
+      '<div class="auth-divider"><span>or choose a username</span></div>' +
+      '<div class="auth-form">' + displayFieldHtml() + usernameFieldHtml() + passwordFieldHtml() + consentBlockHtml() + authErrorHtml() +
+      '<button class="auth-submit" id="authSubmit" data-auth="create-submit" type="button">' + icon('check') + 'Create account</button></div>' +
+      authSwitchHtml(false) + authFootHtml();
+  }
+  function loginCardHtml(offline) {
+    return '<div class="auth-card-head"><span class="auth-kicker">Welcome back</span>' +
+      '<h1>Sign in to RUCHA</h1>' +
+      '<p class="auth-lead">Use the username you created. It is not case sensitive.</p></div>' +
+      socialBlockHtml(offline, true) +
+      '<div class="auth-divider"><span>or use your password</span></div>' +
+      '<div class="auth-form">' +
+      '<label class="auth-field" for="authUsername"><span class="auth-label">Username</span><div class="auth-input-wrap has-prefix"><span class="auth-prefix">@</span>' +
+      '<input id="authUsername" class="auth-input" type="text" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="selam_runs" value="' + esc(auth.form.username) + '"></div></label>' +
+      passwordFieldHtml() + authErrorHtml() +
+      '<button class="auth-submit" id="authSubmit" data-auth="login-submit" type="button">' + icon('check') + 'Sign in</button></div>' +
+      authSwitchHtml(true) + authFootHtml();
+  }
+  function completeCardHtml() {
+    const u = auth.pendingUser || meUser() || {};
+    const label = providerLabel(auth.provider);
+    return '<div class="auth-card-head"><span class="auth-kicker">' + icon('check') + ' ' + esc(label) + ' verified</span>' +
+      '<h1>Choose your RUCHA name</h1>' +
+      '<p class="auth-lead">You are verified with ' + esc(label) + '. Pick the unique username and password you will use from now on. You only do this once.</p></div>' +
+      (u.displayName ? '<div class="auth-provider-chip"><span>' + esc(String(u.displayName).slice(0, 2).toUpperCase()) + '</span><div><b>' + esc(u.displayName) + '</b><small>Verified with ' + esc(label) + '</small></div></div>' : '') +
+      '<div class="auth-form">' + displayFieldHtml() + usernameFieldHtml() + passwordFieldHtml() + consentBlockHtml() + authErrorHtml() +
+      '<button class="auth-submit" id="authSubmit" data-auth="complete-submit" type="button">' + icon('check') + 'Finish creating account</button></div>' +
+      '<p class="auth-fine">Your username is permanent. Your activities will be tied to this account, not to ' + esc(label) + '.</p>' +
+      '<p class="auth-switch"><button class="auth-link" data-auth="switch" type="button">Use a different sign-in method</button></p>';
+  }
+  function telegramCardHtml() {
+    return '<button class="auth-back" data-auth="back" type="button">← Back</button>' +
+      '<div class="auth-card-head"><span class="auth-kicker">Telegram</span><h1>Check Telegram</h1>' +
+      '<p class="auth-lead">The code is sent in the chat, so RUCHA never needs your phone number or email.</p></div>' +
+      '<ol class="auth-steps"><li>Open the RUCHA bot in Telegram and press <b>Start</b>.</li><li>The bot sends you a 6 digit code.</li><li>Type that code below.</li></ol>' +
+      '<a class="auth-tg auth-tg-open" href="' + esc(auth.link) + '" target="_blank" rel="noopener">' + TG_ICON + '<span>Open @' + esc(auth.bot) + '</span></a>' +
+      '<label class="auth-field" for="authCode"><span class="auth-label">6 digit code</span>' +
+      '<div class="auth-input-wrap"><input id="authCode" class="auth-input auth-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000"></div></label>' +
+      authErrorHtml() +
+      '<button class="auth-submit" id="authSubmit" data-auth="verify" type="button">' + icon('check') + 'Sign in</button>' +
+      '<p class="auth-fine">Code not coming? <button class="auth-link" data-auth="restart" type="button">Start again</button></p>';
+  }
+  function privacyCardHtml(kind) {
+    const upgrade = kind === 'consent';
+    return '<div class="auth-card-head"><span class="auth-kicker">' + icon('shield') + ' Your privacy</span>' +
+      '<h1>' + (upgrade ? 'Review the updated notice' : 'Before you start') + '</h1>' +
+      '<p class="auth-lead">' + (upgrade ? 'We updated the privacy notice. Please review and accept the current version to keep using RUCHA.' : 'RUCHA works with your location and your activities, so here is the short version before you enter.') + '</p></div>' +
+      '<ul class="auth-privacy-list">' +
+      '<li>' + icon('map') + '<span><b>Location only while recording.</b> GPS points are saved with the activity you start, never in the background.</span></li>' +
+      '<li>' + icon('shield') + '<span><b>Private by default.</b> Your routes are visible to you until you choose friends or public.</span></li>' +
+      '<li>' + icon('profile') + '<span><b>One account.</b> Your username is unique, and your password protects the account on every device.</span></li>' +
+      '<li>' + icon('offline') + '<span><b>No ads, no selling data.</b> Offline data stays on this device until you sign in.</span></li></ul>' +
+      '<label class="auth-consent"><input type="checkbox" id="privacyGateCheck">' +
+      '<span class="auth-check" aria-hidden="true">' + icon('check') + '</span>' +
+      '<span>I accept the ' + privacyLinksHtml() + '.</span></label>' + authErrorHtml() +
+      '<button class="auth-submit" id="authSubmit" data-auth="privacy-accept" type="button">' + icon('check') + (upgrade ? 'Accept and continue' : 'Accept and enter RUCHA') + '</button>' +
+      (upgrade ? '<p class="auth-switch"><button class="auth-link" data-auth="signout" type="button">Sign out instead</button></p>'
+        : '<p class="auth-switch"><button class="auth-link" data-auth="back" type="button">Back to sign in</button></p>');
   }
   function renderAuth() {
     const card = $('#authCard'); if (!card) return;
-    const cfg = auth.cfg || {};
     const A = AUTH();
-    const offline = A.mode && A.mode() === 'local';
-    if (offline) {
-      card.innerHTML =
-        '<h1>Welcome to RUCHA</h1>' +
-        '<p class="auth-lead">The RUCHA server is not reachable, so Google and Telegram sign-in are unavailable. You can still use the app with a profile stored on this device.</p>' +
-        '<label class="auth-field"><span>Your name</span><input id="authName" class="text-input" maxlength="48" autocomplete="name" placeholder="Selam Tesfaye"></label>' +
-        '<button class="btn btn-primary auth-btn" data-auth="local" type="button">Continue on this device</button>' +
-        '<p class="auth-error" id="authError" role="alert">' + esc(auth.error) + '</p>';
-      return;
-    }
+    const offline = !!(A && A.mode && A.mode() === 'local');
     if (auth.step === 'telegram') {
-      card.innerHTML =
-        '<button class="auth-back" data-auth="back" type="button">\u2190 Back</button>' +
-        '<h1>Check Telegram</h1>' +
-        '<ol class="auth-steps">' +
-        '<li>Open the RUCHA bot in Telegram and press <b>Start</b>.</li>' +
-        '<li>The bot sends you a 6 digit code.</li>' +
-        '<li>Type the code below.</li></ol>' +
-        '<a class="btn btn-secondary auth-btn" href="' + esc(auth.link) + '" target="_blank" rel="noopener">' + TG_ICON + ' Open @' + esc(auth.bot) + '</a>' +
-        '<label class="auth-field"><span>6 digit code</span>' +
-        '<input id="authCode" class="text-input auth-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>' +
-        '<button class="btn btn-primary auth-btn" data-auth="verify" type="button">Sign in</button>' +
-        '<p class="auth-error" id="authError" role="alert">' + esc(auth.error) + '</p>' +
-        '<p class="auth-fine">Code not coming? <button class="auth-link" data-auth="restart" type="button">Start again</button></p>';
+      card.innerHTML = telegramCardHtml();
       const inp = $('#authCode'); if (inp) inp.focus();
       return;
     }
-    card.innerHTML =
-      '<h1>Sign in to RUCHA</h1>' +
-      '<p class="auth-lead">New here? Your account is created the first time you sign in.</p>' +
-      '<div class="auth-methods">' +
-      (cfg.google
-        ? '<div id="googleBtn" class="auth-google"></div>'
-        : '<button class="btn btn-secondary auth-btn" type="button" disabled>Continue with Google</button>') +
-      '<button class="btn btn-primary auth-btn auth-tg" data-auth="telegram" type="button"' + (cfg.telegram ? '' : ' disabled') + '>' + TG_ICON + ' Continue with Telegram</button>' +
-      '</div>' +
-      (!cfg.google && !cfg.telegram && auth.cfg
-        ? '<p class="auth-error">Sign-in is not set up on this server yet. Add the Telegram bot token and Google client ID, then restart it.</p>'
-        : (cfg.telegram ? '' : '<p class="auth-fine">Telegram is not set up on this server yet.</p>') +
-          (cfg.google ? '' : '<p class="auth-fine">Google is not set up on this server yet.</p>')) +
-      '<p class="auth-error" id="authError" role="alert">' + esc(auth.error) + '</p>' +
-      '<p class="auth-fine">No password and no email. For Telegram, the code is sent in the chat. Your activities stay private until you share them.</p>';
+    if (auth.step === 'complete') {
+      card.innerHTML = completeCardHtml();
+      refreshUsernameStatus();
+      return;
+    }
+    if (auth.step === 'login') {
+      card.innerHTML = loginCardHtml(offline);
+      mountProviders();
+      refreshUsernameStatus();
+      return;
+    }
+    if (auth.step === 'privacy' || auth.step === 'consent') {
+      card.innerHTML = privacyCardHtml(auth.step);
+      return;
+    }
+    card.innerHTML = createCardHtml(offline);
+    mountProviders();
+    refreshUsernameStatus();
+  }
+  function mountProviders() {
+    const cfg = auth.cfg || {};
     if (cfg.google) mountGoogle(cfg.googleId);
   }
   function mountGoogle(clientId) {
@@ -1251,10 +1549,12 @@
         client_id: clientId, ux_mode: 'popup', auto_select: false,
         callback: resp => {
           if (!resp || !resp.credential) { authErr('Google did not return a sign-in. Try again.'); return; }
-          AUTH().googleSignIn(resp.credential).then(authDone).catch(e => authErr(e.message));
+          setAuthBusy(true, 'Checking…');
+          AUTH().googleSignIn(resp.credential).then(completeOrDone).catch(e => { setAuthBusy(false); authErr(e.message); });
         }
       });
-      const w = Math.min(340, Math.max(220, (host.parentElement ? host.parentElement.clientWidth : 320)));
+      const parent = host.parentElement;
+      const w = Math.min(400, Math.max(160, (parent ? parent.clientWidth : 320) - 2));
       google.accounts.id.renderButton(host, { theme: 'outline', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'left', width: w });
     };
     if (window.google && google.accounts && google.accounts.id) { draw(); return; }
@@ -1267,52 +1567,251 @@
     }
     sc.addEventListener('load', draw);
   }
+  function ensureApple(cb) {
+    if (window.AppleID && window.AppleID.auth) { cb(); return; }
+    let sc = document.getElementById('appleIdScript');
+    if (sc) { sc.addEventListener('load', cb, { once: true }); return; }
+    sc = document.createElement('script');
+    sc.id = 'appleIdScript';
+    sc.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+    sc.async = true;
+    sc.onload = cb;
+    sc.onerror = () => authErr('Could not load Apple sign-in. Check your connection.');
+    document.head.appendChild(sc);
+  }
+  function startApple() {
+    if (location.protocol !== 'https:') { authErr('Apple sign-in works only on an HTTPS site.'); return; }
+    const cfg = auth.cfg || {};
+    if (!cfg.apple || !cfg.appleClientId) { authErr('Apple sign-in is not set up on this server yet.'); return; }
+    ensureApple(() => {
+      window.AppleID.auth.init({
+        clientId: cfg.appleClientId,
+        scope: 'name email',
+        redirectURI: location.origin + location.pathname,
+        usePopup: true
+      });
+      window.AppleID.auth.signIn().then(res => {
+        const authz = res && res.authorization;
+        const token = authz && (authz.id_token || authz.idToken || authz.code);
+        if (!token) { authErr('Apple did not return a sign-in. Try again.'); return; }
+        let name = '';
+        if (res && res.user && res.user.name) {
+          name = [res.user.name.firstName, res.user.name.lastName].filter(Boolean).join(' ');
+        }
+        setAuthBusy(true, 'Checking…');
+        AUTH().appleSignIn(token, name).then(completeOrDone).catch(e => { setAuthBusy(false); authErr(e.message); });
+      }).catch(err => {
+        if (err && (err.error === 'popup_closed_by_user' || err.error === 'user_cancelled_authorize')) return;
+        authErr((err && err.message) || 'Apple sign-in was cancelled.');
+      });
+    });
+  }
+  function scheduleUsernameCheck() {
+    clearTimeout(userCheckTimer);
+    const u = auth.form.username;
+    if (!u) { auth.usernameState = ''; auth.usernameReason = ''; refreshUsernameStatus(); return; }
+    const A = AUTH();
+    const re = (A && A.usernameRule) || /^[a-z0-9_]{3,20}$/;
+    if (!re.test(u)) {
+      auth.usernameState = 'invalid';
+      auth.usernameReason = 'Use 3-20 lowercase letters, numbers or _.';
+      refreshUsernameStatus();
+      return;
+    }
+    auth.usernameState = 'checking'; auth.usernameReason = ''; refreshUsernameStatus();
+    userCheckTimer = setTimeout(() => {
+      (A && A.usernameAvailable ? A.usernameAvailable(u) : Promise.resolve({ available: true }))
+        .then(r => {
+          if (u !== auth.form.username) return;
+          auth.usernameState = r && r.available ? 'available' : 'taken';
+          auth.usernameReason = (r && r.reason) || '';
+          refreshUsernameStatus();
+        }).catch(() => { auth.usernameState = ''; auth.usernameReason = ''; refreshUsernameStatus(); });
+    }, 350);
+  }
+  function refreshUsernameStatus() {
+    const el = $('#authUserStatus'); if (!el) return;
+    el.className = 'auth-hint' + (auth.usernameState ? ' ' + auth.usernameState : '');
+    el.textContent = usernameStatusText();
+  }
   function onAuthInput(e) {
-    if (e.target.id !== 'authCode') return;
-    e.target.value = e.target.value.replace(/\D+/g, '').slice(0, 6);
-    if (e.target.value.length === 6 && !auth.busy) submitCode();
+    const t = e.target;
+    if (t.id === 'authUsername') {
+      const clean = t.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20);
+      if (clean !== t.value) t.value = clean;
+      auth.form.username = clean;
+      scheduleUsernameCheck();
+      return;
+    }
+    if (t.id === 'authPassword') { auth.form.password = t.value; return; }
+    if (t.id === 'authDisplay') { auth.form.displayName = t.value; return; }
+    if (t.id === 'authCode') {
+      t.value = t.value.replace(/\D+/g, '').slice(0, 6);
+      if (t.value.length === 6 && !auth.busy) submitCode();
+    }
+  }
+  function onAuthChange(e) {
+    if (e.target.id === 'authConsent' || e.target.id === 'privacyGateCheck') {
+      auth.consent.acceptPrivacy = e.target.checked;
+      auth.consent.acceptTerms = e.target.checked;
+    }
+  }
+  function onAuthKeydown(e) {
+    if (e.key === 'Escape') {
+      if (auth.step === 'telegram' || auth.step === 'privacy') { auth.step = 'create'; auth.error = ''; renderAuth(); }
+      else if (auth.step === 'create' || auth.step === 'login') attemptSkip();
+      return;
+    }
+    if (e.key !== 'Enter' || e.target.tagName === 'TEXTAREA') return;
+    if (e.target.id === 'authCode') { e.preventDefault(); submitCode(); return; }
+    if (auth.step === 'create') { e.preventDefault(); submitCreate(); }
+    else if (auth.step === 'login') { e.preventDefault(); submitLogin(); }
+    else if (auth.step === 'complete') { e.preventDefault(); submitComplete(); }
+  }
+  function submitCreate() {
+    if (auth.busy) return;
+    const A = AUTH();
+    const display = auth.form.displayName.trim();
+    const username = auth.form.username.trim().toLowerCase();
+    const password = auth.form.password;
+    if (!display) { authErr('Enter the name you want on your profile.'); return; }
+    if (!A.usernameRule.test(username)) { authErr('Username must be 3-20 characters: letters, numbers and _ only.'); return; }
+    if (auth.usernameState === 'taken') { authErr(auth.usernameReason || 'That username is already taken. Try another.'); return; }
+    if (password.length < authMinPassword()) { authErr('Password must be at least ' + authMinPassword() + ' characters.'); return; }
+    if (!auth.consent.acceptPrivacy || !auth.consent.acceptTerms) { authErr('Accept the Privacy Policy and Terms of Use to create an account.'); return; }
+    auth.busy = true; auth.error = ''; setAuthBusy(true, 'Creating account…');
+    A.register(username, password, display, consentObject()).then(r => {
+      auth.busy = false; auth.created = true; authDone(r);
+    }).catch(e => {
+      if (/taken/i.test(e.message)) { auth.usernameState = 'taken'; auth.usernameReason = e.message; refreshUsernameStatus(); }
+      setAuthBusy(false); authErr(e.message);
+    });
+  }
+  function submitLogin() {
+    if (auth.busy) return;
+    const A = AUTH();
+    const username = auth.form.username.trim().toLowerCase();
+    const password = auth.form.password;
+    if (!username) { authErr('Enter your username.'); return; }
+    if (!password) { authErr('Enter your password.'); return; }
+    auth.busy = true; auth.error = ''; setAuthBusy(true, 'Signing in…');
+    A.login(username, password).then(r => { auth.busy = false; auth.created = false; authDone(r); })
+      .catch(e => { setAuthBusy(false); authErr(e.message); });
+  }
+  function submitComplete() {
+    if (auth.busy) return;
+    const A = AUTH();
+    const display = auth.form.displayName.trim();
+    const username = auth.form.username.trim().toLowerCase();
+    const password = auth.form.password;
+    if (!display) { authErr('Enter the name you want on your profile.'); return; }
+    if (!A.usernameRule.test(username)) { authErr('Username must be 3-20 characters: letters, numbers and _ only.'); return; }
+    if (auth.usernameState === 'taken') { authErr(auth.usernameReason || 'That username is already taken. Try another.'); return; }
+    if (password.length < authMinPassword()) { authErr('Password must be at least ' + authMinPassword() + ' characters.'); return; }
+    if (!auth.consent.acceptPrivacy || !auth.consent.acceptTerms) { authErr('Accept the Privacy Policy and Terms of Use to finish your account.'); return; }
+    auth.busy = true; auth.error = ''; setAuthBusy(true, 'Finishing…');
+    A.completeProfile(username, password, display, consentObject()).then(r => {
+      auth.busy = false; auth.created = true; authDone(r);
+    }).catch(e => {
+      if (/taken/i.test(e.message)) { auth.usernameState = 'taken'; auth.usernameReason = e.message; refreshUsernameStatus(); }
+      setAuthBusy(false); authErr(e.message);
+    });
   }
   function submitCode() {
     const inp = $('#authCode'); if (!inp) return;
     const code = inp.value.trim();
     if (code.length !== 6) { authErr('Enter the 6 digit code from Telegram.'); return; }
     auth.busy = true; auth.error = '';
-    const b = $('#authCard').querySelector('[data-auth="verify"]');
-    if (b) { b.disabled = true; b.textContent = 'Checking\u2026'; }
-    AUTH().telegramVerify(auth.loginId, code).then(authDone).catch(e => {
-      authErr(e.message);
+    setAuthBusy(true, 'Checking…');
+    AUTH().telegramVerify(auth.loginId, code).then(r => {
+      auth.busy = false;
+      completeOrDone(r);
+    }).catch(e => {
+      setAuthBusy(false); authErr(e.message);
       const i = $('#authCode'); if (i) { i.value = ''; i.focus(); }
     });
   }
   function startTelegram() {
+    if (auth.busy) return;
     auth.busy = true; auth.error = '';
     const b = $('#authCard').querySelector('[data-auth="telegram"]');
-    if (b) { b.disabled = true; }
+    if (b) b.disabled = true;
     AUTH().telegramStart().then(r => {
-      auth.loginId = r.loginId; auth.link = r.link; auth.bot = r.bot; auth.step = 'telegram'; auth.busy = false;
+      auth.loginId = r.loginId; auth.link = r.link; auth.bot = r.bot;
+      auth.step = 'telegram'; auth.busy = false;
       renderAuth();
       try { window.open(r.link, '_blank', 'noopener'); } catch (e) {}
-    }).catch(e => { auth.step = 'choose'; renderAuth(); authErr(e.message); });
+    }).catch(e => {
+      auth.busy = false; auth.step = 'create'; renderAuth(); authErr(e.message);
+    });
+  }
+  function attemptSkip() {
+    captureAuthForm();
+    const A = AUTH();
+    if (A && A.hasCurrentConsent && A.hasCurrentConsent()) closeAuthScreen(true);
+    else { auth.step = 'privacy'; auth.error = ''; renderAuth(); }
+  }
+  function acceptPrivacyGate() {
+    const chk = $('#privacyGateCheck');
+    if (!chk || !chk.checked) { authErr('Tick the box to accept the Privacy Policy and Terms of Use.'); return; }
+    const A = AUTH();
+    const consent = consentObject();
+    consent.acceptPrivacy = true;
+    consent.acceptTerms = true;
+    auth.busy = true; auth.error = ''; setAuthBusy(true, 'Saving…');
+    if (auth.step === 'consent') {
+      A.acceptConsent(consent).then(() => {
+        auth.busy = false; closeAuthScreen(false); toast('Privacy choices saved'); afterAuthChange();
+      }).catch(e => { setAuthBusy(false); authErr(e.message); });
+      return;
+    }
+    A.recordLocalConsent(consent).then(() => {
+      auth.busy = false; closeAuthScreen(true);
+    }).catch(e => { setAuthBusy(false); authErr(e.message); });
   }
   function onAuthClick(e) {
     const t = e.target.closest('[data-auth]');
     if (!t) return;
     const act = t.getAttribute('data-auth');
-    if (act === 'skip') closeAuthScreen(true);
-    else if (act === 'telegram') startTelegram();
-    else if (act === 'verify') submitCode();
-    else if (act === 'back') { auth.step = 'choose'; auth.error = ''; renderAuth(); }
-    else if (act === 'restart') startTelegram();
-    else if (act === 'local') {
-      const n = $('#authName');
-      AUTH().localProfile(n ? n.value : '').then(authDone).catch(er => authErr(er.message));
+    if (act === 'skip') { attemptSkip(); return; }
+    if (act === 'telegram') { startTelegram(); return; }
+    if (act === 'apple') { startApple(); return; }
+    if (act === 'verify') { submitCode(); return; }
+    if (act === 'create-submit') { submitCreate(); return; }
+    if (act === 'login-submit') { submitLogin(); return; }
+    if (act === 'complete-submit') { submitComplete(); return; }
+    if (act === 'privacy-accept') { acceptPrivacyGate(); return; }
+    if (act === 'toggle-password') {
+      auth.showPassword = !auth.showPassword;
+      const inp = $('#authPassword');
+      if (inp) inp.type = auth.showPassword ? 'text' : 'password';
+      t.innerHTML = icon(auth.showPassword ? 'eyeOff' : 'eye');
+      t.setAttribute('aria-label', auth.showPassword ? 'Hide password' : 'Show password');
+      return;
+    }
+    if (act === 'login') { captureAuthForm(); auth.step = 'login'; auth.error = ''; auth.usernameState = ''; renderAuth(); return; }
+    if (act === 'create') { captureAuthForm(); auth.step = 'create'; auth.error = ''; auth.usernameState = ''; renderAuth(); return; }
+    if (act === 'back') { captureAuthForm(); auth.step = 'create'; auth.error = ''; renderAuth(); return; }
+    if (act === 'restart') { startTelegram(); return; }
+    if (act === 'signout') {
+      AUTH().logout().then(() => { closeAuthScreen(false); updateAccountChip(); render(); }).catch(() => {});
+      return;
+    }
+    if (act === 'switch') {
+      AUTH().logout().then(() => {
+        auth.pendingUser = null; auth.provider = ''; auth.form.username = ''; auth.form.password = '';
+        auth.form.displayName = ''; auth.step = 'create'; auth.error = ''; renderAuth();
+      }).catch(() => {});
     }
   }
   function renderAccountBody() {
     const A = AUTH(), u = meUser(), box = $('#accountBody');
     if (!A || !box) return;
-    if (!u) { closeModal(); openAuthScreen(); return; }
+    if (!u || u.profileComplete === false) { closeModal(); openAuthScreen(); return; }
     const soc = state.social;
+    const consentWhen = fmtConsentDate(u.privacyAcceptedAt || u.termsAcceptedAt);
+    const consentVersion = u.privacyVersion || (auth.cfg && auth.cfg.privacyVersion) || '';
+    const consentStale = userNeedsConsent(u);
     const mine = state.activities.filter(a => !a.ownerId || a.ownerId === u.id);
     const friendRows = soc.friends.map(f =>
       '<div class="soc-row"><span class="soc-avatar">' + esc(f.username.slice(0, 2).toUpperCase()) + '</span>' +
@@ -1354,7 +1853,22 @@
       '<option value="private">Private (only me)</option><option value="friends">Friends</option><option value="public">Public</option></select>' +
       '<button class="btn btn-secondary btn-sm" data-action="set-visibility">Update visibility</button></div>' +
       '</div>' +
-      '<div class="acct-section"><div class="insight-title">Active shares</div>' + shareRows + '</div>';
+      '<div class="acct-section"><div class="insight-title">Active shares</div>' + shareRows + '</div>' +
+      '<div class="acct-section"><div class="insight-title">Help &amp; legal</div>' +
+      '<div class="acct-links">' +
+      '<a class="btn btn-ghost btn-sm" href="help.html" target="_blank" rel="noopener">' + icon('info') + ' How RUCHA works</a>' +
+      '<a class="btn btn-ghost btn-sm" href="privacy.html" target="_blank" rel="noopener">' + icon('shield') + ' Privacy</a>' +
+      '<a class="btn btn-ghost btn-sm" href="terms.html" target="_blank" rel="noopener">' + icon('profile') + ' Terms</a>' +
+      '</div>' +
+      '<p class="sensor-note acct-consent">' +
+      (consentWhen
+        ? 'Privacy and Terms accepted on ' + esc(consentWhen) + (consentVersion ? ' · version ' + esc(consentVersion) : '') + '.'
+        : 'Privacy and Terms acceptance is recorded with this account.') +
+      '</p>' +
+      (consentStale
+        ? '<button class="btn btn-primary btn-sm" data-action="review-consent">Review the updated notice</button>'
+        : '') +
+      '</div>';
   }
   function authAction(act) {
     const A = AUTH();
@@ -2482,7 +2996,8 @@
       return head + '<div class="gallery-empty card"><div class="gallery-empty-icon">' + icon('gallery') + '</div>' +
         '<h3>No run cards yet</h3>' +
         '<p>Take or choose a photo. We blur the background and draw your run on top. Post it anywhere first, then save it here.</p>' +
-        '<button class="btn btn-primary" data-action="gallery-create">' + icon('plus') + ' Create your first card</button></div>';
+        '<button class="btn btn-primary" data-action="gallery-create">' + icon('plus') + ' Create your first card</button>' +
+        '<p class="gallery-empty-help"><a class="text-link" href="help.html#gallery" target="_blank" rel="noopener">How run cards work</a></p></div>';
     }
     return head + '<div class="gallery-grid">' + cards.map(g =>
       '<div class="gallery-card">' +
@@ -3315,6 +3830,10 @@
   function handleAction(action, el) {
     switch (action) {
       case 'close-modal': closeModal(); break;
+      case 'review-consent': closeModal(); openAuthScreen({ step: 'consent' }); break;
+      case 'quickstart-dismiss':
+        try { localStorage.setItem('rucha_quickstart_v1', 'done'); } catch (e) {}
+        render(); toast('Quick Start hidden — the full guide is under Help'); break;
       
       case 'gallery-create': openActivityPicker(); break;
       case 'save-to-gallery': openShareStudio(el.getAttribute('data-id')); break;
@@ -3610,7 +4129,13 @@
     render();
     let skipped = false;
     try { skipped = sessionStorage.getItem('rucha_skip_auth') === '1'; } catch (e) {}
-    if (!meUser() && !skipped) openAuthScreen();
+    const u = meUser();
+    if (!u) {
+      if (!skipped) openAuthScreen();
+      return;
+    }
+    if (u.profileComplete === false) { openAuthScreen({ step: 'complete' }); return; }
+    if (userNeedsConsent(u)) openConsentScreen();
   }
   function boot() {
     seedStateNow();
@@ -3637,6 +4162,10 @@
       const A = AUTH();
       return A && A.init ? A.init() : null;
     }).then(() => {
+      const A = AUTH();
+      return A && A.config ? A.config().catch(() => null) : null;
+    }).then(cfg => {
+      if (cfg) auth.cfg = cfg;
       updateAccountChip();
       loadGallery();
       applyActivityPrivacy();

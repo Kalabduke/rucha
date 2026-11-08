@@ -138,10 +138,17 @@ func purgePending() {
 
 func handleAuthConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
-		"telegram":    tgToken != "" && botName() != "",
-		"telegramBot": botName(),
-		"google":      googleID != "",
-		"googleId":    googleID,
+		"telegram":       tgToken != "" && botName() != "",
+		"telegramBot":    botName(),
+		"google":         googleID != "",
+		"googleId":       googleID,
+		"apple":          appleClientID != "",
+		"appleClientId":  appleClientID,
+		"privacyVersion": privacyVersion,
+		"termsVersion":   termsVersion,
+		"minPassword":    minPasswordLength,
+		"privacyUpdated": "7 November 2026",
+		"termsUpdated":   "7 November 2026",
 	})
 }
 

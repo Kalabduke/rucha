@@ -15,26 +15,58 @@ import (
 
 var auth Auth
 
-var usernameRE = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
-
-var (
-	errUserTaken    = errors.New("that username is already taken")
-	errBadUsername  = errors.New("username must be 3-20 characters: letters, numbers and _ only")
-	errBadPassword  = errors.New("password must be at least 6 characters")
-	errBadCreds     = errors.New("wrong username or password")
-	errNoUser       = errors.New("user not found")
-	errNotAuthed    = errors.New("sign in required")
-	errSelf         = errors.New("you cannot add yourself")
-	errAlreadyAsked = errors.New("a friend request already exists")
-	errNoRequest    = errors.New("friend request not found")
+const (
+	minPasswordLength = 10
+	privacyVersion    = "2026-11-07"
+	termsVersion      = "2026-11-07"
 )
 
+var usernameRE = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
+
+var reservedNames = map[string]bool{
+	"admin": true, "administrator": true, "apple": true, "google": true,
+	"help": true, "legal": true, "moderator": true, "privacy": true,
+	"root": true, "rucha": true, "support": true, "system": true,
+	"telegram": true, "terms": true,
+}
+
+var (
+	errUserTaken    = errors.New("That username is already taken")
+	errReservedName = errors.New("That username is reserved")
+	errBadUsername  = errors.New("Username must be 3-20 characters: letters, numbers and _ only")
+	errBadPassword  = errors.New("Password must be at least 10 characters")
+	errBadCreds     = errors.New("Wrong username or password")
+	errNoUser       = errors.New("User not found")
+	errNotAuthed    = errors.New("Sign in required")
+	errSelf         = errors.New("You cannot add yourself")
+	errAlreadyAsked = errors.New("A friend request already exists")
+	errNoRequest    = errors.New("Friend request not found")
+	errConsent      = errors.New("Accept the Privacy Policy and Terms of Use to continue")
+	errConsentStale = errors.New("The privacy notice changed; review and accept the latest version")
+	errProfileDone  = errors.New("This account is already set up")
+)
+
+// Consent records which privacy and terms revision a person accepted.
+type Consent struct {
+	AcceptPrivacy  bool   `json:"acceptPrivacy"`
+	AcceptTerms    bool   `json:"acceptTerms"`
+	PrivacyVersion string `json:"privacyVersion"`
+	TermsVersion   string `json:"termsVersion"`
+}
+
 type User struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	City        string `json:"city"`
-	CreatedAt   string `json:"createdAt"`
+	ID              string   `json:"id"`
+	Username        string   `json:"username"`
+	DisplayName     string   `json:"displayName"`
+	City            string   `json:"city"`
+	CreatedAt       string   `json:"createdAt"`
+	ProfileComplete bool     `json:"profileComplete"`
+	HasPassword     bool     `json:"hasPassword"`
+	Providers       []string `json:"providers,omitempty"`
+	PrivacyVersion  string   `json:"privacyVersion,omitempty"`
+	PrivacyAt       string   `json:"privacyAcceptedAt,omitempty"`
+	TermsVersion    string   `json:"termsVersion,omitempty"`
+	TermsAt         string   `json:"termsAcceptedAt,omitempty"`
 }
 
 type userRecord struct {
@@ -74,9 +106,12 @@ type FriendState struct {
 
 type Auth interface {
 	Kind() string
-	Register(username, password, displayName string) (User, string, error)
+	Register(username, password, displayName string, consent Consent) (User, string, error)
 	Login(username, password string) (User, string, error)
 	SocialLogin(provider, providerID, displayName, usernameHint string) (User, string, error)
+	CompleteProfile(token, username, password, displayName string, consent Consent) (User, string, error)
+	AcceptConsent(token string, consent Consent) (User, error)
+	UsernameAvailable(username string) (bool, string)
 	Logout(token string) error
 	Me(token string) (User, error)
 	SearchUsers(q, excludeID string) ([]User, error)
@@ -124,13 +159,36 @@ type authCore struct{ d authData }
 
 func (a *authCore) Kind() string { return a.d.Kind() }
 
-func (a *authCore) Register(username, password, displayName string) (User, string, error) {
-	username = normUsername(username)
-	if !usernameRE.MatchString(username) {
-		return User{}, "", errBadUsername
+func validConsent(c Consent) error {
+	if !c.AcceptPrivacy || !c.AcceptTerms {
+		return errConsent
 	}
-	if len(password) < 6 {
+	if c.PrivacyVersion != privacyVersion || c.TermsVersion != termsVersion {
+		return errConsentStale
+	}
+	return nil
+}
+
+func checkUsername(username string) error {
+	if !usernameRE.MatchString(username) {
+		return errBadUsername
+	}
+	if reservedNames[username] {
+		return errReservedName
+	}
+	return nil
+}
+
+func (a *authCore) Register(username, password, displayName string, consent Consent) (User, string, error) {
+	username = normUsername(username)
+	if err := checkUsername(username); err != nil {
+		return User{}, "", err
+	}
+	if len(password) < minPasswordLength {
 		return User{}, "", errBadPassword
+	}
+	if err := validConsent(consent); err != nil {
+		return User{}, "", err
 	}
 	if _, err := a.d.userByName(username); err == nil {
 		return User{}, "", errUserTaken
@@ -146,9 +204,12 @@ func (a *authCore) Register(username, password, displayName string) (User, strin
 	if len(name) > 48 {
 		name = name[:48]
 	}
+	stamp := nowISO()
 	u := &userRecord{
 		User: User{ID: newID("usr"), Username: username, DisplayName: name,
-			City: "Addis Ababa", CreatedAt: nowISO()},
+			City: "Addis Ababa", CreatedAt: stamp, ProfileComplete: true, HasPassword: true,
+			PrivacyVersion: consent.PrivacyVersion, PrivacyAt: stamp,
+			TermsVersion: consent.TermsVersion, TermsAt: stamp},
 		Hash: hash,
 	}
 	if err := a.d.insertUser(u); err != nil {
@@ -194,7 +255,95 @@ func (a *authCore) Me(token string) (User, error) {
 	if err != nil || u == nil {
 		return User{}, errNotAuthed
 	}
+	// Accounts created before profile completion existed already had a password.
+	if !u.ProfileComplete && u.Hash != "" {
+		u.ProfileComplete = true
+	}
+	if u.Hash != "" {
+		u.HasPassword = true
+	}
 	return u.User, nil
+}
+
+// CompleteProfile turns a verified social sign-in into a full RUCHA account.
+// The chosen username is permanent and is enforced as unique by the store.
+func (a *authCore) CompleteProfile(token, username, password, displayName string, consent Consent) (User, string, error) {
+	u, err := a.d.sessionUser(token)
+	if err != nil || u == nil {
+		return User{}, "", errNotAuthed
+	}
+	if u.ProfileComplete {
+		return u.User, token, errProfileDone
+	}
+	username = normUsername(username)
+	if err := checkUsername(username); err != nil {
+		return User{}, "", err
+	}
+	if len(password) < minPasswordLength {
+		return User{}, "", errBadPassword
+	}
+	if err := validConsent(consent); err != nil {
+		return User{}, "", err
+	}
+	if other, err := a.d.userByName(username); err == nil && other != nil && other.ID != u.ID {
+		return User{}, "", errUserTaken
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return User{}, "", err
+	}
+	name := strings.TrimSpace(displayName)
+	if name == "" {
+		name = username
+	}
+	if len(name) > 48 {
+		name = name[:48]
+	}
+	stamp := nowISO()
+	u.Username = username
+	u.DisplayName = name
+	u.Hash = hash
+	u.HasPassword = true
+	u.ProfileComplete = true
+	u.PrivacyVersion, u.PrivacyAt = consent.PrivacyVersion, stamp
+	u.TermsVersion, u.TermsAt = consent.TermsVersion, stamp
+	if len(u.Providers) == 0 && u.Provider != "" {
+		u.Providers = []string{u.Provider}
+	}
+	if err := a.d.updateUser(u); err != nil {
+		return User{}, "", err
+	}
+	return u.User, token, nil
+}
+
+// AcceptConsent records acceptance of the current privacy and terms revisions.
+func (a *authCore) AcceptConsent(token string, consent Consent) (User, error) {
+	if err := validConsent(consent); err != nil {
+		return User{}, err
+	}
+	u, err := a.d.sessionUser(token)
+	if err != nil || u == nil {
+		return User{}, errNotAuthed
+	}
+	stamp := nowISO()
+	u.PrivacyVersion, u.PrivacyAt = consent.PrivacyVersion, stamp
+	u.TermsVersion, u.TermsAt = consent.TermsVersion, stamp
+	if err := a.d.updateUser(u); err != nil {
+		return User{}, err
+	}
+	return u.User, nil
+}
+
+// UsernameAvailable is used by the live check on the sign-up form.
+func (a *authCore) UsernameAvailable(username string) (bool, string) {
+	username = normUsername(username)
+	if err := checkUsername(username); err != nil {
+		return false, err.Error()
+	}
+	if _, err := a.d.userByName(username); err == nil {
+		return false, errUserTaken.Error()
+	}
+	return true, ""
 }
 
 func (a *authCore) SearchUsers(q, excludeID string) ([]User, error) {
@@ -223,7 +372,7 @@ func (a *authCore) SendRequest(fromID, username string) (FriendEdge, error) {
 	}
 	if e, _ := a.d.findEdge(fromID, to.ID); e != nil {
 		if e.Status == "accepted" {
-			return FriendEdge{}, errors.New("you are already friends")
+			return FriendEdge{}, errors.New("You are already friends")
 		}
 		return FriendEdge{}, errAlreadyAsked
 	}
@@ -250,7 +399,7 @@ func (a *authCore) Respond(userID, edgeID, action string) error {
 	if action == "decline" {
 		return a.d.deleteEdge(edgeID)
 	}
-	return errors.New("action must be accept or decline")
+	return errors.New("Action must be accept or decline")
 }
 
 func (a *authCore) RemoveFriend(userID, otherID string) error {
@@ -306,7 +455,7 @@ func (a *authCore) AddShare(ownerID, activityID, activityTitle, username string,
 		ActivityID: activityID, ActivityTitle: activityTitle, Public: public, CreatedAt: nowISO()}
 	if !public {
 		if username == "" {
-			return Share{}, errors.New("choose a friend or make the link public")
+			return Share{}, errors.New("Choose a friend or make the link public")
 		}
 		to, err := a.d.userByName(normUsername(username))
 		if err != nil || to == nil {
@@ -332,10 +481,10 @@ func (a *authCore) AddShare(ownerID, activityID, activityTitle, username string,
 func (a *authCore) RemoveShare(userID, shareID string) error {
 	s, err := a.d.shareByID(shareID)
 	if err != nil || s == nil {
-		return errors.New("share not found")
+		return errors.New("Share not found")
 	}
 	if s.OwnerID != userID {
-		return errors.New("only the owner can remove a share")
+		return errors.New("Only the owner can remove a share")
 	}
 	return a.d.deleteShare(shareID)
 }
@@ -400,7 +549,7 @@ type Viewer struct {
 func currentViewer(token string) Viewer {
 	v := Viewer{ID: "", Friends: map[string]bool{}, Shared: map[string]bool{}}
 	if token != "" {
-		if u, err := auth.Me(token); err == nil {
+		if u, err := auth.Me(token); err == nil && u.ProfileComplete {
 			v.ID, v.Username = u.ID, u.Username
 			if f, err := auth.FriendIDs(u.ID); err == nil {
 				v.Friends = f
@@ -453,20 +602,99 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Username    string `json:"username"`
-		Password    string `json:"password"`
-		DisplayName string `json:"displayName"`
+		Username       string `json:"username"`
+		Password       string `json:"password"`
+		DisplayName    string `json:"displayName"`
+		AcceptPrivacy  bool   `json:"acceptPrivacy"`
+		AcceptTerms    bool   `json:"acceptTerms"`
+		PrivacyVersion string `json:"privacyVersion"`
+		TermsVersion   string `json:"termsVersion"`
 	}
 	if err := decode(r, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
-	u, tok, err := auth.Register(b.Username, b.Password, b.DisplayName)
+	u, tok, err := auth.Register(b.Username, b.Password, b.DisplayName, Consent{
+		AcceptPrivacy: b.AcceptPrivacy, AcceptTerms: b.AcceptTerms,
+		PrivacyVersion: b.PrivacyVersion, TermsVersion: b.TermsVersion,
+	})
 	if err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
 	writeJSON(w, map[string]interface{}{"user": u, "token": tok})
+}
+
+func handleCompleteProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		fail(w, 405, "POST only")
+		return
+	}
+	tok := tokenFrom(r)
+	if tok == "" {
+		fail(w, 401, errNotAuthed.Error())
+		return
+	}
+	var b struct {
+		Username       string `json:"username"`
+		Password       string `json:"password"`
+		DisplayName    string `json:"displayName"`
+		AcceptPrivacy  bool   `json:"acceptPrivacy"`
+		AcceptTerms    bool   `json:"acceptTerms"`
+		PrivacyVersion string `json:"privacyVersion"`
+		TermsVersion   string `json:"termsVersion"`
+	}
+	if err := decode(r, &b); err != nil {
+		fail(w, 400, "invalid JSON")
+		return
+	}
+	u, token, err := auth.CompleteProfile(tok, b.Username, b.Password, b.DisplayName, Consent{
+		AcceptPrivacy: b.AcceptPrivacy, AcceptTerms: b.AcceptTerms,
+		PrivacyVersion: b.PrivacyVersion, TermsVersion: b.TermsVersion,
+	})
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, map[string]interface{}{"user": u, "token": token})
+}
+
+func handleConsent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		fail(w, 405, "POST only")
+		return
+	}
+	var b struct {
+		AcceptPrivacy  bool   `json:"acceptPrivacy"`
+		AcceptTerms    bool   `json:"acceptTerms"`
+		PrivacyVersion string `json:"privacyVersion"`
+		TermsVersion   string `json:"termsVersion"`
+	}
+	if err := decode(r, &b); err != nil {
+		fail(w, 400, "invalid JSON")
+		return
+	}
+	u, err := auth.AcceptConsent(tokenFrom(r), Consent{
+		AcceptPrivacy: b.AcceptPrivacy, AcceptTerms: b.AcceptTerms,
+		PrivacyVersion: b.PrivacyVersion, TermsVersion: b.TermsVersion,
+	})
+	if err != nil {
+		fail(w, 401, err.Error())
+		return
+	}
+	writeJSON(w, map[string]interface{}{"user": u})
+}
+
+func handleUsernameCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		fail(w, 405, "GET only")
+		return
+	}
+	raw := r.URL.Query().Get("u")
+	available, reason := auth.UsernameAvailable(raw)
+	writeJSON(w, map[string]interface{}{
+		"username": normUsername(raw), "available": available, "reason": reason,
+	})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -678,7 +906,9 @@ func cleanUsername(raw string) string {
 	return s
 }
 
-// SocialLogin signs in an account verified by Google or Telegram, creating it the first time.
+// SocialLogin signs in an account verified by Telegram, Google or Apple.
+// A new account starts incomplete: the person must choose a unique username and
+// password before RUCHA treats the account as usable.
 func (a *authCore) SocialLogin(provider, providerID, displayName, usernameHint string) (User, string, error) {
 	if provider == "" || providerID == "" {
 		return User{}, "", errBadCreds
@@ -692,32 +922,18 @@ func (a *authCore) SocialLogin(provider, providerID, displayName, usernameHint s
 	}
 	name := strings.TrimSpace(displayName)
 	if name == "" {
-		name = usernameHint
+		name = strings.TrimSpace(usernameHint)
 	}
 	if len(name) > 48 {
 		name = name[:48]
 	}
-	base := cleanUsername(usernameHint)
-	if usernameHint == "" {
-		base = cleanUsername(displayName)
-	}
 	var created *userRecord
 	for i := 0; i < 10; i++ {
-		cand := base
-		if i > 0 {
-			b := make([]byte, 2)
-			_, _ = rand.Read(b)
-			cand = base + "_" + hex.EncodeToString(b)
-		}
-		if _, err := a.d.userByName(cand); err == nil {
-			continue
-		}
-		if name == "" {
-			name = cand
-		}
+		placeholder := "pending_" + randHex(4)
 		u := &userRecord{
-			User: User{ID: newID("usr"), Username: cand, DisplayName: name,
-				City: "Addis Ababa", CreatedAt: nowISO()},
+			User: User{ID: newID("usr"), Username: placeholder, DisplayName: name,
+				City: "Addis Ababa", CreatedAt: nowISO(), ProfileComplete: false,
+				Providers: []string{provider}},
 			Provider: provider, ProviderID: providerID,
 		}
 		if err := a.d.insertUser(u); err != nil {
@@ -735,7 +951,7 @@ func (a *authCore) SocialLogin(provider, providerID, displayName, usernameHint s
 		break
 	}
 	if created == nil {
-		return User{}, "", errors.New("could not create your account, please try again")
+		return User{}, "", errors.New("Could not create your account, please try again")
 	}
 	tok, err := a.issue(created.User)
 	if err != nil {

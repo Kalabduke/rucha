@@ -11,7 +11,7 @@
     try {
       var A = global.RUCHA_AUTH;
       var u = A && A.me ? A.me() : null;
-      return u && u.id ? u.id : 'anon';
+      return u && u.id && u.profileComplete !== false ? u.id : 'anon';
     } catch (e) { return 'anon'; }
   }
   function key(k) { return PREFIX + scope() + '_' + k; }
@@ -180,9 +180,66 @@
   function setGoalState(v) { lsSet(K.goals, v || {}); }
   function getGoalState() { return lsGet(K.goals, {}); }
 
+  function claimAnonymous() {
+    var A = global.RUCHA_AUTH;
+    var u = A && A.me ? A.me() : null;
+    if (!u || !u.id || u.profileComplete === false) return false;
+    var uid = u.id, claimed = false;
+    function read(k) {
+      try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }
+      catch (e) { return null; }
+    }
+    function write(k, v) {
+      try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+      catch (e) { return false; }
+    }
+    function idOf(x) {
+      if (x == null) return '';
+      if (typeof x !== 'object') return String(x);
+      if (x.id || x.ID) return String(x.id || x.ID);
+      if (x.challengeId && x.athleteId) return x.challengeId + '|' + x.athleteId;
+      return JSON.stringify(x);
+    }
+    function mergeList(a, b) {
+      var out = Array.isArray(a) ? a.slice() : [], seen = {};
+      out.forEach(function (x) { seen[idOf(x)] = 1; });
+      (Array.isArray(b) ? b : []).forEach(function (x) {
+        var id = idOf(x);
+        if (!seen[id]) { seen[id] = 1; out.push(x); }
+      });
+      return out;
+    }
+    Object.keys(K).forEach(function (k) {
+      var src = read(PREFIX + 'anon_' + k);
+      if (src == null) return;
+      var dst = read(PREFIX + uid + '_' + k);
+      var merged;
+      if (Array.isArray(src) || Array.isArray(dst)) merged = mergeList(dst, src);
+      else if (src && typeof src === 'object') merged = Object.assign({}, src, dst || {});
+      else merged = dst != null ? dst : src;
+      if (write(PREFIX + uid + '_' + k, merged)) {
+        try { localStorage.removeItem(PREFIX + 'anon_' + k); } catch (e) {}
+        claimed = true;
+      }
+    });
+    Object.keys(K).forEach(function (k) {
+      var src = PREFIX + 'anon_cache_' + k;
+      var dst = PREFIX + uid + '_cache_' + k;
+      try {
+        var v = localStorage.getItem(src);
+        if (v == null) return;
+        if (localStorage.getItem(dst) == null) localStorage.setItem(dst, v);
+        localStorage.removeItem(src);
+        claimed = true;
+      } catch (e) {}
+    });
+    return claimed;
+  }
+
   global.RUCHA_API = {
     init: init,
     status: status,
+    claimAnonymous: claimAnonymous,
     configure: function (o) { fb = (o && o.fallback) || {}; },
     setBase: function (b) {
       override = b ? b.replace(/\/+$/, '') : null;

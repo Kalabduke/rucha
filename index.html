@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
 <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -39,12 +39,18 @@
 
     <div class="side-spacer"></div>
 
+    <div class="side-links" aria-label="Help and legal">
+      <a href="help.html" target="_blank" rel="noopener">Help</a>
+      <a href="privacy.html" target="_blank" rel="noopener">Privacy</a>
+      <a href="terms.html" target="_blank" rel="noopener">Terms</a>
+    </div>
+
     <button class="side-user side-user-btn" id="sideAccountBtn" aria-label="Account">
       <div class="avatar avatar-me" id="sideAvatar">ME</div>
       <div class="side-user-text">
         <b id="sideUserName">You</b><span id="sideUserCity">Addis Ababa</span>
       </div>
-          </button>
+    </button>
   </aside>
 
   <main class="main">
@@ -83,10 +89,10 @@
 
 <div class="map-tooltip" id="mapTooltip"></div>
 
-<script src="data.js?v=4"></script>
-<script src="api.js?v=4"></script>
-<script src="auth.js?v=4"></script>
-<script src="sensors.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="data.js?v=5"></script>
+<script src="api.js?v=5"></script>
+<script src="auth.js?v=5"></script>
+<script src="sensors.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

@@ -3,6 +3,10 @@
 
   var LS = 'rucha_auth_v1_';
   var USER_RE = /^[a-z0-9_]{3,20}$/;
+  var MIN_PASSWORD = 10;
+  var PRIVACY_VERSION = '2026-11-07';
+  var TERMS_VERSION = '2026-11-07';
+  var CONSENT_KEY = 'rucha_consent_v1';
   var listeners = [];
   var mode = 'local';      
   var serverToken = '';
@@ -26,6 +30,41 @@
   function ok(v) { return Promise.resolve(v); }
   function no(msg) { return Promise.reject(new Error(msg)); }
   function emit() { listeners.forEach(function (f) { try { f(me()); } catch (e) {} }); }
+
+  function consentPayload(c) {
+    c = c || {};
+    return {
+      acceptPrivacy: !!c.acceptPrivacy,
+      acceptTerms: !!c.acceptTerms,
+      privacyVersion: c.privacyVersion || PRIVACY_VERSION,
+      termsVersion: c.termsVersion || TERMS_VERSION
+    };
+  }
+  function checkConsent(c) {
+    c = consentPayload(c);
+    if (!c.acceptPrivacy || !c.acceptTerms) return 'Accept the Privacy Policy and Terms of Use to continue.';
+    if (c.privacyVersion !== PRIVACY_VERSION || c.termsVersion !== TERMS_VERSION)
+      return 'The privacy notice changed. Review and accept the latest version.';
+    return '';
+  }
+  function localConsent() {
+    try {
+      var v = JSON.parse(localStorage.getItem(CONSENT_KEY) || 'null');
+      return v && typeof v === 'object' ? v : null;
+    } catch (e) { return null; }
+  }
+  function saveLocalConsent(c) {
+    var payload = consentPayload(c);
+    payload.acceptedAt = nowISO();
+    try { localStorage.setItem(CONSENT_KEY, JSON.stringify(payload)); } catch (e) {}
+    return payload;
+  }
+  function hasCurrentConsent() {
+    var c = localConsent();
+    return !!c && c.acceptPrivacy && c.acceptTerms &&
+      c.privacyVersion === PRIVACY_VERSION && c.termsVersion === TERMS_VERSION;
+  }
+  function isComplete(u) { return !!u && u.profileComplete !== false; }
 
   function hashPassword(pw, salt) {
     var raw = salt + ':' + pw;
@@ -76,7 +115,11 @@
     if (!s || s.exp < Date.now()) return null;
     var u = d.users[s.userId];
     if (!u) return null;
-    return { id: u.id, username: u.username, displayName: u.displayName, city: u.city, createdAt: u.createdAt, local: true };
+    return { id: u.id, username: u.username, displayName: u.displayName, city: u.city,
+      createdAt: u.createdAt, local: true, profileComplete: u.profileComplete !== false,
+      hasPassword: !!u.hash, providers: u.providers || [],
+      privacyVersion: u.privacyVersion || '', privacyAcceptedAt: u.privacyAcceptedAt || '',
+      termsVersion: u.termsVersion || '', termsAcceptedAt: u.termsAcceptedAt || '' };
   }
   var currentServerUser = null;
 
@@ -105,27 +148,38 @@
     try { localStorage.setItem('rucha_auth_v1_token', serverToken); } catch (e) {}
   }
 
-  function register(username, password, displayName) {
+  function register(username, password, displayName, consent) {
     username = norm(username);
     if (!USER_RE.test(username)) return no('Username must be 3-20 characters: letters, numbers and _ only.');
-    if (!password || password.length < 6) return no('Password must be at least 6 characters.');
+    if (!password || password.length < MIN_PASSWORD) return no('Password must be at least ' + MIN_PASSWORD + ' characters.');
+    var cErr = checkConsent(consent);
+    if (cErr) return no(cErr);
+    var cp = consentPayload(consent);
     if (mode === 'server') {
-      return api('auth/register', 'POST', { username: username, password: password, displayName: displayName })
-        .then(function (r) {
-          currentServerUser = r.user; persistToken(r.token); emit(); return r;
-        });
+      return api('auth/register', 'POST', {
+        username: username, password: password, displayName: displayName,
+        acceptPrivacy: cp.acceptPrivacy, acceptTerms: cp.acceptTerms,
+        privacyVersion: cp.privacyVersion, termsVersion: cp.termsVersion
+      }).then(function (r) {
+        currentServerUser = r.user; persistToken(r.token); emit();
+        saveLocalConsent(cp); return r;
+      });
     }
     var d = loadDB();
-    if (d.byName[username]) return no('That username is already taken on this device.');
+    if (d.byName[username]) return no('That username is already taken. Try another one.');
     var salt = uid('salt');
     return hashPassword(password, salt).then(function (hash) {
+      var stamp = nowISO();
       var u = { id: uid('usr'), username: username, displayName: String(displayName || username).slice(0, 48),
-                city: 'Addis Ababa', createdAt: nowISO(), hash: hash, salt: salt };
+                city: 'Addis Ababa', createdAt: stamp, hash: hash, salt: salt,
+                profileComplete: true, providers: [],
+                privacyVersion: cp.privacyVersion, privacyAcceptedAt: stamp,
+                termsVersion: cp.termsVersion, termsAcceptedAt: stamp };
       d.users[u.id] = u; d.byName[username] = u.id;
       var tok = uid('tok');
       d.sessions[tok] = { userId: u.id, exp: Date.now() + 30 * 864e5 };
-      d.currentToken = tok; saveDB(); emit();
-      return { user: me(), token: tok };
+      d.currentToken = tok; saveDB(); saveLocalConsent(cp); emit();
+      return { user: me(), token: tok, created: true };
     });
   }
 
@@ -161,10 +215,20 @@
 
   var cfgCache = null;
   function config() {
-    if (mode !== 'server') return ok({ telegram: false, google: false, local: true });
+    if (mode !== 'server') return ok({ telegram: false, google: false, apple: false,
+      local: true, privacyVersion: PRIVACY_VERSION, termsVersion: TERMS_VERSION,
+      minPassword: MIN_PASSWORD });
     if (cfgCache) return ok(cfgCache);
-    return api('auth/config').then(function (c) { cfgCache = c || {}; return cfgCache; })
-      .catch(function () { return { telegram: false, google: false }; });
+    return api('auth/config').then(function (c) {
+      cfgCache = c || {};
+      cfgCache.privacyVersion = cfgCache.privacyVersion || PRIVACY_VERSION;
+      cfgCache.termsVersion = cfgCache.termsVersion || TERMS_VERSION;
+      cfgCache.minPassword = +cfgCache.minPassword || MIN_PASSWORD;
+      return cfgCache;
+    }).catch(function () {
+      return { telegram: false, google: false, apple: false,
+        privacyVersion: PRIVACY_VERSION, termsVersion: TERMS_VERSION, minPassword: MIN_PASSWORD };
+    });
   }
   function finishSignIn(r) {
     currentServerUser = r.user; persistToken(r.token); emit(); return r;
@@ -181,20 +245,94 @@
     if (mode !== 'server') return no('Google sign-in needs the RUCHA server.');
     return api('auth/google', 'POST', { credential: credential }).then(finishSignIn);
   }
+  function appleSignIn(identityToken, name) {
+    if (mode !== 'server') return no('Apple sign-in needs the RUCHA server.');
+    return api('auth/apple', 'POST', { identityToken: identityToken, name: name || '' }).then(finishSignIn);
+  }
+  function completeProfile(username, password, displayName, consent) {
+    if (mode !== 'server') return no('Finish your account on the RUCHA server.');
+    username = norm(username);
+    if (!USER_RE.test(username)) return no('Username must be 3-20 characters: letters, numbers and _ only.');
+    if (!password || password.length < MIN_PASSWORD) return no('Password must be at least ' + MIN_PASSWORD + ' characters.');
+    var cErr = checkConsent(consent);
+    if (cErr) return no(cErr);
+    var cp = consentPayload(consent);
+    return api('auth/complete', 'POST', {
+      username: username, password: password, displayName: displayName,
+      acceptPrivacy: cp.acceptPrivacy, acceptTerms: cp.acceptTerms,
+      privacyVersion: cp.privacyVersion, termsVersion: cp.termsVersion
+    }).then(function (r) {
+      currentServerUser = r.user; persistToken(r.token); saveLocalConsent(cp); emit();
+      r.created = true; return r;
+    });
+  }
+  function recordLocalConsent(consent) {
+    var cErr = checkConsent(consent);
+    if (cErr) return no(cErr);
+    return ok(saveLocalConsent(consent));
+  }
+  function acceptConsent(consent) {
+    var cErr = checkConsent(consent);
+    if (cErr) return no(cErr);
+    var cp = consentPayload(consent);
+    saveLocalConsent(cp);    if (mode !== 'server') {
+      var d = loadDB(), cur = me();
+      if (cur) {
+        var u = d.users[cur.id];
+        if (u) {
+          var stamp = nowISO();
+          u.privacyVersion = cp.privacyVersion; u.privacyAcceptedAt = stamp;
+          u.termsVersion = cp.termsVersion; u.termsAcceptedAt = stamp;
+          saveDB(); emit();
+        }
+      }
+      return ok({ user: me() });
+    }
+    return api('auth/consent', 'POST', {
+      acceptPrivacy: cp.acceptPrivacy, acceptTerms: cp.acceptTerms,
+      privacyVersion: cp.privacyVersion, termsVersion: cp.termsVersion
+    }).then(function (r) {
+      currentServerUser = r.user; emit(); return r;
+    });
+  }
+  function usernameAvailable(username) {
+    username = norm(username);
+    if (!USER_RE.test(username)) return ok({ username: username, available: false,
+      reason: 'Username must be 3-20 characters: letters, numbers and _ only.' });
+    if (mode === 'server') {
+      return api('auth/username?u=' + encodeURIComponent(username)).then(function (r) {
+        return { username: username, available: !!(r && r.available), reason: (r && r.reason) || '' };
+      }).catch(function () {
+        var d = loadDB();
+        return { username: username, available: !d.byName[username],
+          reason: d.byName[username] ? 'That username is already taken.' : '' };
+      });
+    }
+    var d = loadDB();
+    return ok({ username: username, available: !d.byName[username],
+      reason: d.byName[username] ? 'That username is already taken.' : '' });
+  }
   // Used only when RUCHA is opened as a file with no server: a profile that lives on this device.
-  function localProfile(name) {
+  function localProfile(name, consent) {
     var d = loadDB();
     var display = String(name || '').trim().slice(0, 48);
     if (!display) return no('Enter your name.');
+    var cErr = checkConsent(consent);
+    if (cErr) return no(cErr);
+    var cp = consentPayload(consent);
     var base = norm(display).replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 14) || 'runner';
     var uname = base, n = 1;
     while (d.byName[uname]) { n++; uname = base + '_' + n; }
-    var u = { id: uid('usr'), username: uname, displayName: display, city: 'Addis Ababa', createdAt: nowISO(), hash: '', salt: '' };
+    var stamp = nowISO();
+    var u = { id: uid('usr'), username: uname, displayName: display, city: 'Addis Ababa',
+      createdAt: stamp, hash: '', salt: '', profileComplete: true, providers: [],
+      privacyVersion: cp.privacyVersion, privacyAcceptedAt: stamp,
+      termsVersion: cp.termsVersion, termsAcceptedAt: stamp };
     d.users[u.id] = u; d.byName[uname] = u.id;
     var tok = uid('tok');
     d.sessions[tok] = { userId: u.id, exp: Date.now() + 365 * 864e5 };
-    d.currentToken = tok; saveDB(); emit();
-    return ok({ user: me(), token: tok });
+    d.currentToken = tok; saveDB(); saveLocalConsent(cp); emit();
+    return ok({ user: me(), token: tok, created: true });
   }
 
   function searchUsers(q) {
@@ -357,13 +495,18 @@
     init: init, mode: authMode, me: me, token: token, onChange: onChange,
     register: register, login: login, logout: logout,
     config: config, telegramStart: telegramStart, telegramVerify: telegramVerify,
-    googleSignIn: googleSignIn, localProfile: localProfile,
+    googleSignIn: googleSignIn, appleSignIn: appleSignIn, completeProfile: completeProfile,
+    acceptConsent: acceptConsent, recordLocalConsent: recordLocalConsent,
+    usernameAvailable: usernameAvailable,
+    localProfile: localProfile, isComplete: isComplete,
+    localConsent: localConsent, hasCurrentConsent: hasCurrentConsent,
     searchUsers: searchUsers,
     friendState: friendState, friendRequest: friendRequest,
     friendRespond: friendRespond, friendRemove: friendRemove,
     shares: shares, addShare: addShare, removeShare: removeShare,
     setVisibility: setVisibility, canSee: canSee, canSeeChallenge: canSeeChallenge,
     visibilityContext: visibilityContext,
-    usernameRule: USER_RE
+    usernameRule: USER_RE, minPassword: MIN_PASSWORD,
+    privacyVersion: PRIVACY_VERSION, termsVersion: TERMS_VERSION
   };
 })(window);

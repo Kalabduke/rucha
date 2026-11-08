@@ -15,6 +15,7 @@ type authData interface {
 	userByName(name string) (*userRecord, error)
 	userByProvider(provider, id string) (*userRecord, error)
 	insertUser(u *userRecord) error
+	updateUser(u *userRecord) error
 	listUsers(q, excludeID string) ([]*userRecord, error)
 	insertSession(tok, userID string, exp time.Time) error
 	sessionUser(tok string) (*userRecord, error)
@@ -106,6 +107,25 @@ func (m *memData) insertUser(u *userRecord) error {
 		return errUserTaken
 	}
 	m.users[u.ID] = u
+	m.byName[u.Username] = u.ID
+	return nil
+}
+
+func (m *memData) updateUser(u *userRecord) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	old := m.users[u.ID]
+	if old == nil {
+		return errNoUser
+	}
+	if id, taken := m.byName[u.Username]; taken && id != u.ID {
+		return errUserTaken
+	}
+	if old.Username != u.Username {
+		delete(m.byName, old.Username)
+	}
+	c := *u
+	m.users[u.ID] = &c
 	m.byName[u.Username] = u.ID
 	return nil
 }
@@ -304,6 +324,14 @@ func scanUser(raw []byte) (*userRecord, error) {
 	if err := json.Unmarshal(raw, &u); err != nil {
 		return nil, err
 	}
+	if u.Provider != "" && len(u.Providers) == 0 {
+		u.Providers = []string{u.Provider}
+	}
+	if u.Hash != "" {
+		u.HasPassword = true
+		// accounts made before profile completion existed already had a password
+		u.ProfileComplete = true
+	}
 	return &u, nil
 }
 
@@ -343,6 +371,23 @@ func (p *pgData) insertUser(u *userRecord) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return errUserTaken
+	}
+	return nil
+}
+
+func (p *pgData) updateUser(u *userRecord) error {
+	raw, _ := json.Marshal(u)
+	res, err := p.db.Exec(`UPDATE users SET username=$1,payload=$2::jsonb WHERE id=$3`,
+		u.Username, string(raw), u.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			return errUserTaken
+		}
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return errNoUser
 	}
 	return nil
 }

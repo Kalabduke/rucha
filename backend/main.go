@@ -67,9 +67,15 @@ func main() {
 	mux.HandleFunc("/api/segments", handleSegments)
 	mux.HandleFunc("/api/halloffame", handleHall)
 	mux.HandleFunc("/api/auth/config", handleAuthConfig)
+	mux.HandleFunc("/api/auth/username", handleUsernameCheck)
+	mux.HandleFunc("/api/auth/register", handleRegister)
+	mux.HandleFunc("/api/auth/login", handleLogin)
+	mux.HandleFunc("/api/auth/complete", handleCompleteProfile)
+	mux.HandleFunc("/api/auth/consent", handleConsent)
 	mux.HandleFunc("/api/auth/telegram/start", handleTelegramStart)
 	mux.HandleFunc("/api/auth/telegram/verify", handleTelegramVerify)
 	mux.HandleFunc("/api/auth/google", handleGoogleLogin)
+	mux.HandleFunc("/api/auth/apple", handleAppleLogin)
 	mux.HandleFunc("/api/auth/logout", handleLogout)
 	mux.HandleFunc("/api/auth/me", handleMe)
 	mux.HandleFunc("/api/users", handleUsers)
@@ -141,6 +147,9 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 }
 
 func fail(w http.ResponseWriter, code int, msg string) {
+	if msg != "" {
+		msg = strings.ToUpper(msg[:1]) + msg[1:]
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
