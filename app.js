@@ -97,10 +97,9 @@
     view: 'dashboard', theme: 'light',
     city: 'addis', mapFilter: 'all', heat: false, terrain: true,
     basemap: 'osm', distinctLines: true,
-    activities: D.ACTIVITIES.slice(),
-    kudos: new Set(), joined: new Set(D.CLUBS.filter(c => c.joined).map(c => c.id)),
+    activities: [], kudos: new Set(), joined: new Set(),
     activityFilter: 'all', search: '', gallery: [],
-    challenges: [], popularAreas: [], hall: [], segments: [], places: [],
+    challenges: [], popularAreas: [], hall: [], segments: [], clubs: [], places: [],
     joinedChallenges: [], backend: { online: false, store: 'offline' }, sensors: null,
     social: { incoming: [], outgoing: [], friends: [], shares: [] },
     leaderboardCache: {}, goal: { km: 0, best: null },
@@ -230,33 +229,6 @@
     s += '<text class="chart-label" x="' + (W - pad) + '" y="' + (H - 3) + '" text-anchor="end">' + track[track.length - 1].d.toFixed(1) + ' km</text>';
     return s + '</svg>';
   }
-  function globeSVG(percent) {
-    const C = 2 * Math.PI * 100, off = C * (1 - clamp(percent, 0, 1));
-    const angle = -Math.PI / 2 + clamp(percent, 0, 1) * Math.PI * 2;
-    const dx = 115 + 100 * Math.cos(angle), dy = 115 + 100 * Math.sin(angle);
-    return '<svg viewBox="0 0 230 230">' +
-      '<defs><radialGradient id="gg" cx="35%" cy="30%"><stop offset="0" stop-color="#2E6B52"/><stop offset="1" stop-color="#0C1F18"/></radialGradient>' +
-      '<clipPath id="gc"><circle cx="115" cy="115" r="88"/></clipPath></defs>' +
-      '<circle cx="115" cy="115" r="100" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="1"/>' +
-      '<circle cx="115" cy="115" r="88" fill="url(#gg)" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>' +
-      '<g clip-path="url(#gc)" fill="rgba(120,205,155,.30)" stroke="rgba(150,225,180,.35)" stroke-width="1">' +
-      '<path d="M92 55 q22 -8 38 4 l10 22 -6 20 -14 16 -8 26 -14 -6 -6 -28 -14 -14 4 -24 z"/>' +
-      '<path d="M62 52 q18 -12 34 -4 l8 14 -12 10 -20 -2 -14 -8 z"/>' +
-      '<path d="M138 48 q30 -8 48 6 l10 20 -14 12 -22 -6 -14 -10 -12 -12 z"/>' +
-      '<path d="M44 108 q14 -6 24 4 l4 22 -12 20 -14 -6 -6 -22 z"/>' +
-      '<path d="M168 140 q16 -6 24 6 l-4 18 -18 4 -8 -14 z"/>' +
-      '</g>' +
-      '<g clip-path="url(#gc)" fill="none" stroke="rgba(255,255,255,.13)" stroke-width="1">' +
-      '<ellipse cx="115" cy="115" rx="30" ry="88"/><ellipse cx="115" cy="115" rx="62" ry="88"/>' +
-      '<path d="M27 115h176M32 82h166M32 148h166M115 27v176"/>' +
-      '</g>' +
-      '<circle cx="115" cy="115" r="100" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="5"/>' +
-      '<circle cx="115" cy="115" r="100" fill="none" stroke="#FF5A1F" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '" transform="rotate(-90 115 115)"/>' +
-      '<circle cx="' + dx.toFixed(1) + '" cy="' + dy.toFixed(1) + '" r="6" fill="#F2B705" stroke="#fff" stroke-width="2"/>' +
-      '<circle cx="115" cy="115" r="88" fill="none" stroke="rgba(255,255,255,.10)"/>' +
-      '</svg>';
-  }
-
   function smoothAnchors(anchors, per) {
     const out = [];
     for (let i = 0; i < anchors.length - 1; i++) {
@@ -475,9 +447,6 @@
         c.restore();
       }
 
-      if (this.opts.suggested && !this.suggestedTrack) {
-        this.suggestedTrack = D.liveTrack(this.opts.city, 9090);
-      }
       if (this.opts.suggested && this.suggestedTrack) {
         c.save(); c.setLineDash([8, 8]); c.strokeStyle = col.dark ? '#8FD8B4' : '#0E8A6A'; c.lineWidth = 2; c.globalAlpha = .8;
         c.beginPath();
@@ -987,32 +956,26 @@
       '<div class="view-sub">' + esc(D.fmtDate(new Date())) + '</div></div>' +
       '<div class="view-actions"><button class="btn btn-primary" data-nav="record">' + icon('play') + ' Start recording</button></div></div>';
   }
-  function heroHtml() {
-    const C = D.COMMUNITY;
-    const pct = C.totalKm / C.earthCircumferenceKm;
-    const laps = pct.toFixed(2);
-    return '<section class="hero">' +
-      '<div class="hero-grid"></div><div class="hero-inner">' +
-      '<div class="hero-left">' +
-      '<div class="hero-eyebrow">' + t('hero.eyebrow') + '</div>' +
-      '<h1 class="hero-title">' + t('hero.title') + '</h1>' +
-      '<p class="hero-sub">' + t('hero.sub') + '</p>' +
-      '<div class="hero-number">' + D.fmtNum(C.totalKm) + '<small>km</small></div>' +
-      '<div class="hero-laps">' + icon('globe') + laps + ' × ' + t('hero.laps') + '</div>' +
-      '<div class="journey-bar"><span style="width:' + clamp(pct * 100, 0, 100).toFixed(1) + '%"></span></div>' +
-      '<div class="hero-metrics">' +
-      '<div class="hero-metric"><b>' + D.fmtNum(C.athletes) + '</b><span>' + t('hero.athletes') + '</span></div>' +
-      '<div class="hero-metric"><b>' + C.cities + '</b><span>' + t('hero.cities') + '</span></div>' +
-      '<div class="hero-metric"><b>' + C.clubs + '</b><span>' + t('hero.clubs') + '</span></div>' +
-      '<div class="hero-metric"><b>' + D.fmtNum(C.runsThisWeek) + '</b><span>' + t('stat.activities') + ' / ' + t('stat.thisWeek') + '</span></div>' +
-      '</div></div>' +
-      '<div class="hero-globe">' + globeSVG(pct) +
-      '<div class="globe-center"><b>' + pct.toFixed(2) + '×</b><span>EARTH LAPS</span></div></div>' +
-      '</div></section>';
-  }
   function myActivities() {
     const id = myId();
     return state.activities.filter(a => id && a.ownerId === id);
+  }
+  function communityStats() {
+    const acts = state.activities || [];
+    const athletes = new Set();
+    acts.forEach(a => {
+      if (a.ownerId) athletes.add(a.ownerId);
+      else if (a.athlete && a.athlete.name) athletes.add(a.athlete.name);
+    });
+    const cities = new Set(acts.map(a => a.city).filter(Boolean));
+    const weekStart = Date.now() - 7 * 86400000;
+    return {
+      athletes: athletes.size,
+      totalKm: acts.reduce((sum, a) => sum + (+a.distance || 0), 0),
+      cities: cities.size,
+      clubs: (state.clubs || []).length,
+      runsThisWeek: acts.filter(a => a.date && +a.date >= weekStart).length
+    };
   }
   function statsHtml() {
     const mine = myActivities();
@@ -1093,7 +1056,7 @@
       ['crosshair', 'Allow location', 'Tap Record and allow precise location. RUCHA reads GPS only while a recording is running — never in the background.'],
       ['record', 'Record your run or ride', 'Keep the phone with you. Distance goals, auto-pause and live GPS accuracy are all on the record screen.'],
       ['shield', 'Keep it private', 'Every activity starts private. Share a single run or open it to friends and the community when you choose.'],
-      ['segments', 'Explore Ethiopia', 'Climb local segments, join challenges, make a run card in the gallery and find people by their unique username.']
+      ['segments', 'Make the community yours', 'Turn a recorded route into a segment, create a club or challenge, make a run card in the gallery and find people by their unique username.']
     ];
     return '<section class="quick-start" aria-labelledby="quickStartTitle">' +
       '<div class="quick-start-head"><span class="quick-start-kicker">' + icon('sparkles') + ' Quick Start</span>' +
@@ -1396,7 +1359,7 @@
   }
   function displayFieldHtml() {
     return '<label class="auth-field" for="authDisplay"><span class="auth-label">Display name</span>' +
-      '<div class="auth-input-wrap"><input id="authDisplay" class="auth-input" type="text" maxlength="48" autocomplete="name" placeholder="Selam Tesfaye" value="' + esc(auth.form.displayName) + '"></div>' +
+      '<div class="auth-input-wrap"><input id="authDisplay" class="auth-input" type="text" maxlength="48" autocomplete="name" placeholder="Your display name" value="' + esc(auth.form.displayName) + '"></div>' +
       '<span class="auth-hint">This is the name your friends see on your profile and activities.</span></label>';
   }
   function consentBlockHtml() {
@@ -2077,10 +2040,65 @@
   function athleteFrom(x) {
     if (x.athlete && x.athlete.name) return x.athlete;
     const name = x.athleteName || 'You';
-    const known = D.ATHLETES.find(u => u.name === name);
-    if (known) return known;
     const initials = (name.split(/\s+/).map(w => w[0]).join('').slice(0, 2) || 'ME').toUpperCase();
     return { id: x.athleteId || 'me', name: name, initials: initials, me: true };
+  }
+  function cityKeyFor(value) {
+    if (!value) return 'addis';
+    if (D.CITIES[value]) return value;
+    const wanted = String(value).toLowerCase();
+    const key = Object.keys(D.CITIES).find(k => D.CITIES[k].name.toLowerCase() === wanted);
+    return key || 'addis';
+  }
+  function segmentCat(gain, km) {
+    const gradient = km > 0 ? (+gain || 0) / km : (+gain || 0);
+    if (gradient >= 80) return 'HC';
+    if (gradient >= 45) return '1';
+    if (gradient >= 25) return '2';
+    if (gradient >= 12) return '3';
+    if (gradient >= 4) return '4';
+    return '5';
+  }
+  function normalizeSegment(x) {
+    if (!x || typeof x !== 'object') return null;
+    const km = +x.km || 0;
+    const gain = x.gain != null ? +x.gain : (x.gainM != null ? +x.gainM : 0);
+    const bestSec = x.bestSec != null ? +x.bestSec : (x.bestSeconds != null ? +x.bestSeconds : 0);
+    return {
+      id: String(x.id || x.ID || ('seg_' + Math.random().toString(36).slice(2, 9))),
+      name: x.name || 'Untitled segment', city: cityKeyFor(x.city),
+      startLat: x.startLat != null ? +x.startLat : 0, startLng: x.startLng != null ? +x.startLng : 0,
+      endLat: x.endLat != null ? +x.endLat : 0, endLng: x.endLng != null ? +x.endLng : 0,
+      km: km, gain: Math.round(gain), cat: x.cat || segmentCat(gain, km),
+      type: x.type === 'ride' ? 'ride' : 'run',
+      bestSec: Math.round(bestSec), attempts: +x.attempts || 0,
+      bestAthleteId: x.bestAthleteId || '', bestAthleteName: x.bestAthleteName || '',
+      ownerId: x.ownerId || '', ownerName: x.ownerName || '',
+      activityId: x.activityId || '', createdAt: x.createdAt || ''
+    };
+  }
+  function toBackendSegment(s) {
+    return {
+      id: s.id, name: s.name,
+      city: (D.CITIES[s.city] || D.CITIES.addis).name,
+      startLat: s.startLat, startLng: s.startLng, endLat: s.endLat, endLng: s.endLng,
+      km: s.km, gainM: Math.round(s.gain), cat: s.cat, type: s.type,
+      bestSeconds: Math.round(s.bestSec || 0), attempts: s.attempts || 0,
+      ownerId: s.ownerId || '', ownerName: s.ownerName || '',
+      bestAthleteId: s.bestAthleteId || '', bestAthleteName: s.bestAthleteName || '',
+      activityId: s.activityId || '', createdAt: s.createdAt || new Date().toISOString()
+    };
+  }
+  function normalizeClub(c) {
+    if (!c || typeof c !== 'object') return null;
+    return {
+      id: String(c.id || c.ID || ('club_' + Math.random().toString(36).slice(2, 9))),
+      name: c.name || 'Untitled club', description: c.description || c.desc || '',
+      city: c.city || '', type: c.type === 'ride' ? 'ride' : 'run',
+      color: c.color || D.PALETTE[Math.abs(String(c.id || c.name || 'club').length) % D.PALETTE.length],
+      ownerId: c.ownerId || '', ownerName: c.ownerName || '',
+      members: +c.members || 0, joined: !!c.joined, createdAt: c.createdAt || ''
+    };
   }
   function normalizeActivity(x) {
     if (!x || typeof x !== 'object') return null;
@@ -2116,7 +2134,7 @@
       endLng: x.endLng != null ? +x.endLng : last.lng,
       gpsAccuracyM: x.gpsAccuracyM != null ? +x.gpsAccuracyM : 0,
       hrSource: x.hrSource || (avgHr != null ? 'Bluetooth HR' : 'none'),
-      lineColor: x.lineColor || null, source: x.source || (front ? 'demo' : 'database'),
+      lineColor: x.lineColor || null, source: x.source || (front ? 'device' : 'database'),
       ownerId: x.ownerId || '', ownerName: x.ownerName || '', visibility: x.visibility || ''
     };
   }
@@ -2151,7 +2169,7 @@
       endName: c.endName || '', targetKm: +c.targetKm || 0, targetSeconds: +c.targetSeconds || 0,
       targetElevationM: +c.targetElevationM || 0, segmentId: c.segmentId || '', geofenceM: +c.geofenceM || 0,
       prizeBr: +c.prizeBr || 0, members: +c.members || 0, joined: !!c.joined,
-      createdBy: c.createdBy || 'RUCHA', endsAt: c.endsAt || '',
+      createdBy: c.createdBy || c.ownerName || 'Athlete', endsAt: c.endsAt || '',
       ownerId: c.ownerId || '', ownerName: c.ownerName || '',
       visibility: c.visibility || 'everyone', mode: c.mode || 'open',
       opponentId: c.opponentId || '', opponentName: c.opponentName || '',
@@ -2171,7 +2189,6 @@
       id: String(g.id || g.ID || ('card_' + Math.random().toString(36).slice(2, 9))),
       title: g.title || 'Run card', activityId: g.activityId || '', dataUrl: img, meta: meta,
       created: g.created || (g.createdAt ? Date.parse(g.createdAt) : 0) || Date.now(),
-      sample: !!g.sample,
       ownerId: g.ownerId || '', visibility: g.visibility || ''
     };
   }
@@ -2180,7 +2197,7 @@
       id: g.id, title: g.title, activityId: g.activityId, imageData: g.dataUrl,
       distanceKm: parseFloat(g.meta && g.meta.distance) || 0,
       duration: (g.meta && g.meta.duration) || '', city: (g.meta && g.meta.city) || '',
-      sample: !!g.sample, createdAt: new Date(g.created || Date.now()).toISOString(),
+      createdAt: new Date(g.created || Date.now()).toISOString(),
       ownerId: g.ownerId || myId(), visibility: g.visibility || 'private'
     };
   }
@@ -2469,9 +2486,9 @@
       '<div style="flex:1"><div class="club-name">' + esc(a.title) + '</div>' +
       '<div class="club-desc">' + esc(a.cityObj.name) + ' · ' + a.distance.toFixed(1) + ' km · +' + D.fmtNum(a.gain) + ' m</div></div>' +
       '<span class="pill">' + D.fmtPace(a.pace) + '/km</span></div>').join('');
-    const segRows = D.SEGMENTS.slice(0, 5).map(s =>
-      '<div class="club-card"><span class="seg-cat">' + s.cat + '</span>' +
-      '<div style="flex:1"><div class="club-name">' + esc(s.name) + '</div><div class="club-desc">' + s.km + ' km · +' + s.gain + ' m · ' + D.fmtNum(s.attempts) + ' ' + t('seg.attempts') + '</div></div>' +
+    const segRows = state.segments.slice(0, 5).map(s =>
+      '<div class="club-card"><span class="seg-cat">' + esc(s.cat) + '</span>' +
+      '<div style="flex:1"><div class="club-name">' + esc(s.name) + '</div><div class="club-desc">' + s.km.toFixed(1) + ' km · +' + D.fmtNum(s.gain) + ' m · ' + D.fmtNum(s.attempts) + ' ' + t('seg.attempts') + '</div></div>' +
       '<button class="btn btn-secondary btn-sm" data-segment="' + s.id + '">' + t('seg.leaderboard') + '</button></div>').join('');
     return '<div class="view-head"><div><h1 class="view-title">' + t('nav.explore') + '</h1>' +
       '<div class="view-sub">Routes, popular areas and real street tiles of Ethiopia</div></div>' +
@@ -2483,13 +2500,14 @@
       '<div class="two-grid" style="margin-top:18px">' +
       '<div class="card"><div class="card-head"><div><div class="card-title">Popular routes</div>' +
       '<div class="card-sub">Click a route to fly the map to it · every line has its own colour</div></div></div>' +
-      '<div style="padding:8px 0 4px">' + rows + '</div></div>' +
+      '<div style="padding:8px 0 4px">' + (rows || '<div class="pa-empty">No routes yet. Record an activity and it will appear here.</div>') + '</div></div>' +
       '<div class="card"><div class="card-head"><div><div class="card-title">Popular running areas</div>' +
       '<div class="card-sub">Ranked by how often that location is used as a run start</div></div></div>' +
       '<div style="padding:12px 18px 18px">' + popularAreasHtml() + '</div></div></div>' +
       '<div class="two-grid" style="margin-top:18px">' +
-      '<div class="card"><div class="card-head"><div><div class="card-title">' + t('nav.segments') + '</div><div class="card-sub">' + t('seg.sub') + '</div></div></div>' +
-      '<div style="padding:8px 0 4px">' + segRows + '</div></div>' +
+      '<div class="card"><div class="card-head"><div><div class="card-title">' + t('nav.segments') + '</div><div class="card-sub">' + t('seg.sub') + '</div></div>' +
+      '<button class="btn btn-secondary btn-sm" data-action="segment-create">' + icon('plus') + ' Create</button></div>' +
+      '<div style="padding:8px 0 4px">' + (segRows || '<div class="pa-empty">No segments yet. Record a run, then create a segment from it.</div>') + '</div></div>' +
       '<div class="card card-pad"><div class="insight-title" style="margin-bottom:10px">' + icon('layers') + ' Two maps, one set of lines</div>' +
       '<p class="insight-text">The offline map is drawn on-device and works with no signal on the Entoto trails. Switch to OpenStreetMap for real street tiles of Ethiopia underneath the exact same GPS lines, start pins and kilometre markers. If tiles load slowly, tap Street map again to retry, or keep the offline overview.</p>' +
       '<div class="hint-row"><span class="pill green">' + icon('check') + ' Distinct route colours</span>' +
@@ -2522,43 +2540,197 @@
         '<td class="mono">+' + D.fmtNum(a.gain) + ' m</td>' +
         '<td>' + icon('kudos') + ' ' + (a.kudos + (state.kudos.has(a.id) ? 1 : 0)) + '</td></tr>').join('') +
       '</tbody></table></div></div>' +
-      (list.length === 0 ? '<div class="card card-pad" style="margin-top:14px;text-align:center;color:var(--muted)">No activities match that search.</div>' : '');
+      (list.length === 0 ? '<div class="card card-pad" style="margin-top:14px;text-align:center;color:var(--muted)">' +
+        (state.activities.length === 0
+          ? '<p style="margin:0 0 14px">No activities yet. Record your first run or ride and it will appear here.</p><button class="btn btn-primary btn-sm" data-nav="record">' + icon('play') + ' Start recording</button>'
+          : 'No activities match that search.') + '</div>' : '');
   }
 
   function viewSegments() {
-    return '<div class="view-head"><div><h1 class="view-title">' + t('seg.title') + '</h1><div class="view-sub">' + t('seg.sub') + '</div></div>' +
-      '<div class="view-actions"><span class="pill">' + icon('mountain') + 'Entoto · 2,355–3,200 m</span></div></div>' +
-      '<div class="seg-grid">' + D.SEGMENTS.map(s =>
+    const segs = state.segments || [];
+    const head = '<div class="view-head"><div><h1 class="view-title">' + t('seg.title') + '</h1><div class="view-sub">' + t('seg.sub') + '</div></div>' +
+      '<div class="view-actions"><button class="btn btn-primary btn-sm" data-action="segment-create">' + icon('plus') + ' Create a segment</button></div></div>';
+    if (!segs.length) {
+      return head + '<div class="gallery-empty card"><div class="gallery-empty-icon">' + icon('segments') + '</div>' +
+        '<h3>No segments yet</h3>' +
+        '<p>Record a run or ride, then turn it into a segment. Other recordings on the same start and finish will update the course record.</p>' +
+        '<button class="btn btn-primary" data-action="segment-create">' + icon('plus') + ' Create your first segment</button>' +
+        '<p class="gallery-empty-help"><a class="text-link" href="help.html#segments" target="_blank" rel="noopener">How segments work</a></p></div>';
+    }
+    const first = segs[0];
+    return head +
+      '<div class="seg-grid">' + segs.map(s =>
         '<div class="card seg-card" data-segment="' + s.id + '">' +
-        '<div class="seg-top"><div class="seg-cat">' + s.cat + '</div><div><div class="seg-name">' + esc(s.name) + '</div>' +
-        '<div class="seg-meta">' + esc((D.CITIES[s.city] || {}).name) + ' · ' + (s.type === 'ride' ? 'Ride' : 'Run') + '</div></div></div>' +
-        '<div class="seg-nums"><div><b>' + s.km + '</b><span>km</span></div><div><b>+' + s.gain + '</b><span>m gain</span></div>' +
+        '<div class="seg-top"><div class="seg-cat">' + esc(s.cat) + '</div><div><div class="seg-name">' + esc(s.name) + '</div>' +
+        '<div class="seg-meta">' + esc((D.CITIES[s.city] || D.CITIES.addis).name) + ' · ' + (s.type === 'ride' ? 'Ride' : 'Run') + '</div></div></div>' +
+        '<div class="seg-nums"><div><b>' + s.km.toFixed(1) + '</b><span>km</span></div><div><b>+' + D.fmtNum(s.gain) + '</b><span>m gain</span></div>' +
         '<div><b>' + D.fmtNum(s.attempts) + '</b><span>' + t('seg.attempts') + '</span></div></div>' +
-        '<div class="seg-crown">' + icon('trophy') + (s.crown ? t('seg.crown') + ': ' + esc((D.ATHLETES.find(u => u.id === s.crown) || {}).name) : 'Crown up for grabs') + '</div></div>'
+        '<div class="seg-crown">' + icon('trophy') + (s.bestSec
+          ? 'Course record: ' + esc(s.bestAthleteName || s.ownerName || 'Athlete') + ' · ' + D.fmtDuration(s.bestSec)
+          : 'No time recorded yet') + '</div></div>'
       ).join('') + '</div>' +
       '<div class="card" style="margin-top:18px"><div class="card-head" style="padding-bottom:14px"><div>' +
       '<div class="card-title">Hall of fame</div>' +
-      '<div class="card-sub">Fastest efforts · every start point shown with its real latitude / longitude and the place name resolved from the map</div></div></div>' +
+      '<div class="card-sub">Course records from segments created by RUCHA athletes</div></div></div>' +
       hallHtml() + '</div>' +
       '<div class="card" style="margin-top:18px"><div class="card-head" style="padding-bottom:14px"><div>' +
-      '<div class="card-title">Segment leaderboard — Entoto Hill Climb</div>' +
-      '<div class="card-sub">The toughest local climb · 6.8 km · +612 m</div></div></div>' +
-      leaderRows('s1', true) + '</div>';
+      '<div class="card-title">Segment leaderboard — ' + esc(first.name) + '</div>' +
+      '<div class="card-sub">' + first.km.toFixed(1) + ' km · +' + D.fmtNum(first.gain) + ' m · ' + D.fmtNum(first.attempts) + ' ' + t('seg.attempts') + '</div></div></div>' +
+      leaderRows(first.id, true) + '</div>';
   }
   function leaderRows(segId, withLegend) {
-    const s = D.SEGMENTS.find(x => x.id === segId);
-    const me = D.ATHLETES.find(u => u.me);
-    const rows = (D.LEADERS[segId] || []).slice(0, 6).map(r => ({ user: r.user, sec: r.sec, me: false }));
-    rows.push({ user: me, sec: Math.round(s.bestSec * 1.14), me: true });
-    rows.sort((a, b) => a.sec - b.sec);
+    const s = state.segments.find(x => x.id === segId);
+    if (!s) return '<div class="pa-empty">No segment selected.</div>';
+    const rows = [];
+    if (s.bestSec > 0) {
+      rows.push({
+        name: s.bestAthleteName || s.ownerName || 'Athlete',
+        sec: s.bestSec,
+        me: !!myId() && (s.bestAthleteId === myId() || (!s.bestAthleteId && s.ownerId === myId()))
+      });
+    }
     let html = '<div>';
     if (withLegend) html += '<div class="leader-row legend-row"><span class="leader-rank">' + icon('star') + '</span>' +
-      '<span class="leader-name">' + t('seg.legend') + ' · 3,000 m pace</span><span class="leader-time" style="color:#E8A700">' + D.fmtDuration(Math.round(s.bestSec * 0.91)) + '</span></div>';
+      '<span class="leader-name">Course record · ' + D.fmtNum(s.attempts || 0) + ' ' + t('seg.attempts') + '</span>' +
+      '<span class="leader-time" style="color:#E8A700">' + (s.bestSec > 0 ? D.fmtDuration(s.bestSec) : '—') + '</span></div>';
     html += rows.map((r, i) =>
-      '<div class="leader-row' + (r.me ? ' me' : '') + '"><span class="leader-rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
-      avatar(r.user, 'avatar-sm') + '<span class="leader-name">' + (r.me ? t('common.you') + ' · ' + t('seg.yourPR') : esc(r.user.name)) + '</span>' +
+      '<div class="leader-row' + (r.me ? ' me' : '') + '"><span class="leader-rank top">' + (i + 1) + '</span>' +
+      '<span class="leader-name">' + (r.me ? t('common.you') + ' · ' + t('seg.yourPR') : esc(r.name)) + '</span>' +
       '<span class="leader-time">' + D.fmtDuration(r.sec) + '</span></div>').join('');
+    if (!rows.length) html += '<div class="pa-empty" style="padding:16px 18px">No time recorded yet. Record an activity on this route.</div>';
     return html + '</div>';
+  }
+
+  function openSegmentCreate() {
+    if (!requireAccount('Sign in to create a segment')) return;
+    const acts = myActivities().filter(a => a.track && a.track.length >= 2 && a.distance > 0);
+    if (!acts.length) {
+      toast('Record a run or ride first — segments are created from your own routes.');
+      setView('record');
+      return;
+    }
+    state.segmentForm = { activityId: acts[0].id };
+    const opts = acts.map(a => '<option value="' + esc(a.id) + '">' + esc(a.title) + ' · ' + a.distance.toFixed(2) + ' km</option>').join('');
+    const html = '<div class="modal-head">' +
+      '<div class="ch-icon" style="background:#0E8A6A">' + icon('segments') + '</div>' +
+      '<div><h3>Create a segment</h3><p>Turn one of your recorded routes into a course other athletes can race</p></div>' +
+      '<button class="modal-close" data-action="close-modal">' + icon('close') + '</button></div>' +
+      '<div class="modal-body">' +
+      '<label class="fld"><span>Recorded activity</span><select id="segActivity" class="text-input">' + opts + '</select></label>' +
+      '<label class="fld"><span>Segment name</span><input id="segName" class="text-input" maxlength="80" placeholder="e.g. Entoto ridge climb"></label>' +
+      '<div class="cc-blurb" id="segPreview"></div>' +
+      '<p class="muted" style="font-size:12px;line-height:1.7">A segment keeps the start and finish of the selected activity. Any later recording that starts and finishes within about 150 m updates the attempt count and course record.</p>' +
+      '<div class="cc-footer"><span class="cc-note">' + icon('shield') + ' Only your own recordings can become segments.</span>' +
+      '<button class="btn btn-secondary btn-sm" data-action="close-modal">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" data-action="segment-save">' + icon('check') + ' Create segment</button></div></div>';
+    openModal(html);
+    updateSegmentPreview();
+  }
+  function updateSegmentPreview() {
+    const f = state.segmentForm;
+    const box = $('#segPreview');
+    if (!f || !box) return;
+    const sel = $('#segActivity');
+    if (sel) f.activityId = sel.value;
+    const a = state.activities.find(x => x.id === f.activityId);
+    if (!a) { box.innerHTML = ''; return; }
+    const cat = segmentCat(a.gain, a.distance);
+    box.innerHTML = icon('info') + '<span><b>' + esc(a.title) + '</b><br>' +
+      a.distance.toFixed(2) + ' km · +' + D.fmtNum(a.gain) + ' m · category ' + esc(cat) + ' · ' +
+      D.fmtDuration(a.duration) + ' recorded time</span>';
+    const name = $('#segName');
+    if (name && !name.value) name.placeholder = a.title + ' segment';
+  }
+  function saveSegment() {
+    const f = state.segmentForm;
+    if (!f) return;
+    const a = state.activities.find(x => x.id === ($('#segActivity') ? $('#segActivity').value : f.activityId));
+    if (!a) { toast('Choose one of your recorded activities'); return; }
+    if (state.segments.some(s => s.activityId === a.id)) {
+      toast('That activity is already a segment');
+      return;
+    }
+    const name = (($('#segName') && $('#segName').value.trim()) || (a.title + ' segment')).slice(0, 80);
+    const seg = normalizeSegment({
+      id: 'seg_' + Date.now(), name: name, city: a.city,
+      startLat: a.startLat, startLng: a.startLng,
+      endLat: a.endLat, endLng: a.endLng,
+      km: a.distance, gainM: Math.round(a.gain), cat: segmentCat(a.gain, a.distance), type: a.type,
+      bestSeconds: Math.round(a.duration), attempts: 1,
+      ownerId: myId(), ownerName: myName(),
+      bestAthleteId: myId(), bestAthleteName: myName(),
+      activityId: a.id, createdAt: new Date().toISOString()
+    });
+    state.segments = [seg].concat(state.segments);
+    state.hall = D.hallOfFame(state.segments);
+    API().addSegment(toBackendSegment(seg));
+    closeModal();
+    state.view = 'segments';
+    render();
+    toast('Segment created — ' + name);
+  }
+  function matchSegmentEfforts(a) {
+    if (!a || !a.track || a.track.length < 2 || !(a.duration > 0)) return;
+    const start = [a.startLat != null ? a.startLat : a.track[0].lat, a.startLng != null ? a.startLng : a.track[0].lng];
+    const end = [a.endLat != null ? a.endLat : a.track[a.track.length - 1].lat, a.endLng != null ? a.endLng : a.track[a.track.length - 1].lng];
+    let changed = false;
+    state.segments.forEach(s => {
+      if (s.type !== a.type) return;
+      if (D.haversine(start, [s.startLat, s.startLng]) * 1000 > 150) return;
+      if (D.haversine(end, [s.endLat, s.endLng]) * 1000 > 150) return;
+      const tolerance = Math.max(0.4, (s.km || 0) * 0.15);
+      if (Math.abs((a.distance || 0) - (s.km || 0)) > tolerance) return;
+      s.attempts = (s.attempts || 0) + 1;
+      if (!s.bestSec || a.duration < s.bestSec) {
+        s.bestSec = Math.round(a.duration);
+        s.bestAthleteId = myId() || 'guest';
+        s.bestAthleteName = myName();
+      }
+      API().addSegment(toBackendSegment(s));
+      changed = true;
+    });
+    if (changed) {
+      state.hall = D.hallOfFame(state.segments);
+      toast('Segment effort matched — course record updated if it was faster');
+    }
+  }
+
+  function openClubCreate() {
+    if (!requireAccount('Sign in to create a club')) return;
+    const cities = Object.keys(D.CITIES).map(k => '<option value="' + esc(D.CITIES[k].name) + '">' + esc(D.CITIES[k].name) + '</option>').join('');
+    const html = '<div class="modal-head">' +
+      '<div class="ch-icon" style="background:#0B6E56">' + icon('users') + '</div>' +
+      '<div><h3>Create a club</h3><p>Gather the people you train with and give your crew a home</p></div>' +
+      '<button class="modal-close" data-action="close-modal">' + icon('close') + '</button></div>' +
+      '<div class="modal-body">' +
+      '<label class="fld"><span>Club name</span><input id="clubName" class="text-input" maxlength="60" placeholder="e.g. Entoto Trail Club"></label>' +
+      '<label class="fld"><span>Description</span><textarea id="clubDesc" class="text-input" rows="2" maxlength="300" placeholder="Who is this club for?"></textarea></label>' +
+      '<label class="fld"><span>Home city</span><select id="clubCity" class="text-input">' + cities + '</select></label>' +
+      '<label class="fld"><span>Discipline</span><select id="clubType" class="text-input"><option value="run">Running</option><option value="ride">Riding</option></select></label>' +
+      '<div class="cc-footer"><span class="cc-note">' + icon('users') + ' You become the first member and owner.</span>' +
+      '<button class="btn btn-secondary btn-sm" data-action="close-modal">Cancel</button>' +
+      '<button class="btn btn-primary btn-sm" data-action="club-save">' + icon('check') + ' Create club</button></div></div>';
+    openModal(html);
+  }
+  function saveClub() {
+    const name = ($('#clubName') && $('#clubName').value.trim()) || '';
+    if (!name) { toast('Give your club a name first'); return; }
+    const description = ($('#clubDesc') && $('#clubDesc').value.trim()) || '';
+    const city = ($('#clubCity') && $('#clubCity').value) || (D.CITIES[state.city] || D.CITIES.addis).name;
+    const type = ($('#clubType') && $('#clubType').value) === 'ride' ? 'ride' : 'run';
+    const c = normalizeClub({
+      id: 'club_' + Date.now(), name: name, description: description, city: city, type: type,
+      color: D.PALETTE[Math.abs(name.length + type.length) % D.PALETTE.length],
+      ownerId: myId(), ownerName: myName(), members: 1, joined: true,
+      createdAt: new Date().toISOString()
+    });
+    state.clubs = [c].concat(state.clubs);
+    state.joined.add(c.id);
+    API().addClub(c);
+    closeModal();
+    state.view = 'community';
+    render();
+    toast('Club created — ' + name + '. Invite your training partners.');
   }
 
   function visibleChallenges() {
@@ -2568,16 +2740,18 @@
   function viewCommunity() {
     const list = visibleChallenges();
     const ch = list.map(challengeCardHtml).join('');
-    const clubs = D.CLUBS.map(c =>
+    const stats = communityStats();
+    const clubs = state.clubs.map(c =>
       '<div class="club-card"><span class="club-logo" style="background:' + c.color + '">' + icon(c.type === 'ride' ? 'ride' : 'run') + '</span>' +
       '<div style="flex:1"><div class="club-name">' + esc(c.name) + '</div>' +
-      '<div class="club-desc">' + esc(c.desc) + '</div>' +
-      '<div class="club-members">' + icon('users') + ' ' + D.fmtNum(c.members) + ' ' + t('com.members') + ' · ' + esc(c.city) + '</div></div>' +
+      '<div class="club-desc">' + esc(c.description || 'A club created by a RUCHA athlete.') + '</div>' +
+      '<div class="club-members">' + icon('users') + ' ' + D.fmtNum(c.members) + ' ' + t('com.members') + (c.city ? ' · ' + esc(c.city) : '') + '</div></div>' +
       '<button class="btn ' + (state.joined.has(c.id) ? 'btn-ghost' : 'btn-secondary') + ' btn-sm" data-club="' + c.id + '">' +
       (state.joined.has(c.id) ? icon('check') + t('com.joined') : t('com.join')) + '</button></div>').join('');
     return '<div class="view-head"><div><h1 class="view-title">' + t('com.title') + '</h1>' +
       '<div class="view-sub">Clubs, challenges and the people who make the kilometres</div></div>' +
-      '<div class="view-actions"><span class="pill accent">' + icon('users') + D.fmtNum(D.COMMUNITY.athletes) + ' athletes</span>' +
+      '<div class="view-actions"><span class="pill accent">' + icon('users') + D.fmtNum(stats.athletes) + ' athletes</span>' +
+      '<button class="btn btn-secondary btn-sm" data-action="club-create">' + icon('plus') + ' Create a club</button>' +
       '<button class="btn btn-primary btn-sm" data-action="challenge-create">' + icon('plus') + ' Create a challenge</button></div></div>' +
       '<div class="card-head" style="padding:0 0 12px"><div><div class="card-title">' + t('com.challenges') + '</div>' +
       '<div class="card-sub">' + list.length + ' challenges visible to you · ' + D.CHALLENGE_KINDS.length + ' types to try</div></div>' + backendBadge() + '</div>' +
@@ -2585,8 +2759,10 @@
       'Join a challenge to appear on its standings table, or challenge one friend to a fastest-5K duel.</div>' +
       (ch ? '<div class="two-grid" style="margin-bottom:20px">' + ch + '</div>'
           : '<div class="card card-pad" style="margin-bottom:20px;text-align:center;color:var(--muted)">No challenges yet. Create the first one.</div>') +
-      '<div class="card"><div class="card-head"><div><div class="card-title">' + t('com.clubs') + '</div><div class="card-sub">' + D.COMMUNITY.clubs + ' clubs across Ethiopia</div></div></div>' +
-      '<div style="padding:8px 0 4px">' + clubs + '</div></div>';
+      '<div class="card"><div class="card-head"><div><div class="card-title">' + t('com.clubs') + '</div><div class="card-sub">' + stats.clubs + ' user-created club' + (stats.clubs === 1 ? '' : 's') + '</div></div>' +
+      '<button class="btn btn-secondary btn-sm" data-action="club-create">' + icon('plus') + ' Create a club</button></div>' +
+      (clubs ? '<div style="padding:8px 0 4px">' + clubs + '</div>'
+             : '<div class="pa-empty">No clubs yet. Create one and invite the people you train with.</div>') + '</div>';
   }
 
   // fastest time over a distance, from the recorded timestamps of one track
@@ -2920,19 +3096,16 @@
   function loadGallery() {
     try {
       const raw = localStorage.getItem(galleryKey());
-      if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) { state.gallery = arr; return; } }
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          state.gallery = arr.filter(g => g && g.dataUrl && !g.sample);
+          if (state.gallery.length !== arr.length) persistGallery();
+          return;
+        }
+      }
     } catch (e) {  }
-    seedGallery();
-  }
-  function seedGallery() {
-    state.gallery = state.activities.slice(0, 2).map((a, i) => ({
-      id: 'sample_' + i, title: a.title, activityId: a.id,
-      dataUrl: renderCardToDataURL(a, { image: null, blur: 10, style: i ? 'midnight' : 'sunset', showRoute: true }),
-      meta: { distance: a.distance.toFixed(2), duration: D.fmtDuration(a.duration), pace: D.fmtPace(a.pace), city: a.cityObj.name },
-      created: Date.now() - (i + 1) * 86400000, sample: true,
-      ownerId: myId(), visibility: 'private'
-    }));
-    persistGallery();
+    state.gallery = [];
   }
   function persistGallery() {
     try { localStorage.setItem(galleryKey(), JSON.stringify(state.gallery)); return true; }
@@ -3001,8 +3174,7 @@
     }
     return head + '<div class="gallery-grid">' + cards.map(g =>
       '<div class="gallery-card">' +
-        '<div class="gallery-img"><img src="' + g.dataUrl + '" alt="' + esc(g.title) + '">' +
-        (g.sample ? '<span class="gallery-sample">SAMPLE</span>' : '') + '</div>' +
+        '<div class="gallery-img"><img src="' + g.dataUrl + '" alt="' + esc(g.title) + '"></div>' +
         '<div class="gallery-meta">' +
           '<b class="gallery-title">' + esc(g.title) + '</b>' +
           '<div class="gallery-sub">' + esc(g.meta.distance) + ' km · ' + esc(g.meta.duration) + ' · ' + esc(g.meta.city) + '</div>' +
@@ -3138,7 +3310,7 @@
         id: 'card_' + Date.now(), title: a.title, activityId: a.id,
         dataUrl: studio.dataUrl,
         meta: { distance: a.distance.toFixed(2), duration: D.fmtDuration(a.duration), pace: D.fmtPace(a.pace), city: a.cityObj.name },
-        created: Date.now(), sample: false
+        created: Date.now()
       };
       state.gallery.unshift(card);
       const ok = persistGallery();
@@ -3203,7 +3375,7 @@
       '<div class="detail-stat"><span>Target</span><b>' + esc(challengeTarget(c)) + '</b></div>' +
       '<div class="detail-stat"><span>Members</span><b>' + D.fmtNum(c.members || 0) + '</b></div>' +
       '<div class="detail-stat"><span>Prize pool</span><b>' + (c.prizeBr ? D.fmtNum(c.prizeBr) + ' Br' : '—') + '</b></div>' +
-      '<div class="detail-stat"><span>Created by</span><b>' + esc(c.createdBy || 'RUCHA') + '</b></div></div>' +
+      '<div class="detail-stat"><span>Created by</span><b>' + esc(c.createdBy || c.ownerName || 'Athlete') + '</b></div></div>' +
       '<div class="cd-actions">' +
       '<button class="btn btn-secondary btn-sm" data-challenge-standings="' + esc(c.id) + '">' + icon('trophy') + ' Standings table</button>' +
       (c.mode === 'head_to_head' && c.inviteStatus === 'pending' && c.opponentId === myId()
@@ -3517,11 +3689,10 @@
       ['Avg pace', D.fmtPace(a.pace) + ' /km'], ['Elev gain', '+' + D.fmtNum(a.gain) + ' m'],
       ['Calories', D.fmtNum(a.calories) + ' kcal']
     ];
-    const splits = [];
-    for (let k = 1; k <= Math.min(6, Math.floor(a.distance)); k++) {
-      const p = a.pace + Math.round(Math.sin(k * 1.7) * 9);
-      splits.push('<tr><td>' + k + '</td><td>' + D.fmtPace(p) + '</td><td>+' + Math.round(a.gain / Math.max(1, a.distance) * k * (0.8 + 0.4 * Math.sin(k))) + ' m</td></tr>');
-    }
+    const splitRows = computeSplits(a.track, a.duration);
+    const splits = splitRows.map(s =>
+      '<tr><td>' + s.km + '</td><td>' + D.fmtPace(s.pace) + '</td><td>+' + Math.max(0, Math.round(s.elev)) + ' m</td></tr>');
+    if (!splits.length) splits.push('<tr><td colspan="3" class="muted">No GPS timestamps for kilometre splits.</td></tr>');
     const html = '<div class="modal-head">' + typeBadge(a.type) +
       '<div><h3>' + esc(a.title) + '</h3>' +
       '<p>' + esc(a.athlete ? a.athlete.name : 'You') + ' · ' + esc(D.relativeDay(a.date)) + ' · ' + esc(a.cityObj.name) + ' · ' + (a.type === 'ride' ? 'Ride' : 'Run') + '</p></div>' +
@@ -3553,20 +3724,24 @@
     if (eng) { eng.focusId = a.id; eng.fitRoute(a); eng.replay.t = 1; eng.render(); }
   }
   function openSegment(id) {
-    const s = D.SEGMENTS.find(x => x.id === id);
+    const s = state.segments.find(x => x.id === id);
     if (!s) return;
-    const html = '<div class="modal-head"><div class="seg-cat">' + s.cat + '</div>' +
+    const cityName = (D.CITIES[s.city] || D.CITIES.addis).name;
+    const best = s.bestSec > 0
+      ? '<span class="pill gold">' + icon('star') + 'Course record · ' + esc(s.bestAthleteName || s.ownerName || 'Athlete') + ' · ' + D.fmtDuration(s.bestSec) + '</span>'
+      : '<span class="pill">' + icon('trophy') + 'No time recorded yet</span>';
+    const html = '<div class="modal-head"><div class="seg-cat">' + esc(s.cat) + '</div>' +
       '<div><h3>' + esc(s.name) + '</h3>' +
-      '<p>' + esc((D.CITIES[s.city] || {}).name) + ' · ' + s.km + ' km · +' + s.gain + ' m · ' + D.fmtNum(s.attempts) + ' ' + t('seg.attempts') + '</p></div>' +
+      '<p>' + esc(cityName) + ' · ' + s.km.toFixed(1) + ' km · +' + D.fmtNum(s.gain) + ' m · ' + D.fmtNum(s.attempts) + ' ' + t('seg.attempts') + '</p></div>' +
       '<button class="modal-close" data-action="close-modal">' + icon('close') + '</button></div>' +
       '<div class="modal-body"><div class="row" style="gap:10px;margin-bottom:16px">' +
-      '<span class="pill accent">' + icon('trophy') + t('seg.leaderboard') + '</span>' +
-      '<span class="pill">' + icon('mountain') + 'Altitude-adjusted times</span>' +
-      '<span class="pill gold">' + icon('star') + t('seg.legend') + '</span></div>' +
+      '<span class="pill accent">' + icon('trophy') + t('seg.leaderboard') + '</span>' + best +
+      (s.ownerName ? '<span class="pill">' + icon('users') + 'Created by @' + esc(s.ownerName) + '</span>' : '') + '</div>' +
       '<div class="card">' + leaderRows(s.id, true) + '</div>' +
       '<div class="card card-pad" style="margin-top:16px;background:linear-gradient(120deg,var(--accent-soft),transparent)">' +
-      '<div class="row"><span class="insight-icon">' + icon('mountain') + '</span><div><div class="insight-title">About altitude on this segment</div>' +
-      '<div class="insight-text">Times on this segment are recorded between 2,355 m and 3,200 m. RUCHA normalises efforts to sea-level equivalents so leaderboards stay fair between highland and lowland athletes.</div></div></div></div></div>';
+      '<div class="row"><span class="insight-icon">' + icon('mountain') + '</span><div><div class="insight-title">Segment details</div>' +
+      '<div class="insight-text">Start ' + esc(coord(s.startLat, s.startLng)) + ' · finish ' + esc(coord(s.endLat, s.endLng)) + '. ' +
+      'Record an activity on the same start and finish (within about 150 m) and your time is added automatically.</div></div></div></div></div>';
     openModal(html);
   }
 
@@ -3696,7 +3871,7 @@
         (goalTime ? ' Goal ' + D.fmtNum(r.goalKm) + ' km reached in ' + D.fmtDuration(durationSec) + ' — the timer stopped automatically.' : ''),
       ownerId: myId(), ownerName: myName(), visibility: 'private',
       cityObj: D.CITIES[state.city] || D.CITIES.addis, anchors: [], track: tr,
-      gain: gain, date: new Date(), athlete: D.ATHLETES.find(u => u.me), calories: cal,
+      gain: gain, date: new Date(), athlete: athleteFrom({ athleteName: myName(), athleteId: myId() || 'me' }), calories: cal,
       tags: ['Device GPS', c ? 'Challenge' : 'Open run'],
       startLat: tr[0].lat, startLng: tr[0].lng,
       endLat: tr[tr.length - 1].lat, endLng: tr[tr.length - 1].lng,
@@ -3709,6 +3884,7 @@
     };
     state.activities.unshift(a);
     API().addActivity(toBackendActivity(a));
+    matchSegmentEfforts(a);
     if (c) submitChallengeProgress(c, dist, durationSec, gain);
     if (goalTime && r.goalKm > 0) {
       const g = state.goal;
@@ -3781,7 +3957,7 @@
       const common = { city: state.city, routes: state.view === 'dashboard' ? myActivities() : state.activities, filter: state.mapFilter, heat: state.heat, terrain: false, interactive: true, osm: state.basemap === 'osm', distinct: state.distinctLines, onTilesFailed: tilesFailed };
       let opts;
       if (state.view === 'dashboard') opts = Object.assign({}, common, { mode: 'multi', replay: true });
-      else if (state.view === 'explore') opts = Object.assign({}, common, { mode: 'multi', suggested: true });
+      else if (state.view === 'explore') opts = Object.assign({}, common, { mode: 'multi', suggested: false });
       else opts = Object.assign({}, common, { mode: 'live', filter: 'all', heat: false, routes: (state.rec.realTrack && state.rec.realTrack.length) ? [{ id: 'live', type: state.rec.type, track: state.rec.realTrack, distance: 0, duration: 0, gain: 0, title: 'Live' }] : [], interactive: true });
       const eng = mountMap(mapId, opts);
       if (state.view === 'dashboard' && eng) { const mine0 = myActivities(); if (mine0.length) eng.focusId = mine0.slice().sort((a, b) => b.date - a.date)[0].id; }
@@ -3839,6 +4015,10 @@
       case 'save-to-gallery': openShareStudio(el.getAttribute('data-id')); break;
       case 'challenge-create': openChallengeCreate(); break;
       case 'challenge-save': saveChallenge(); break;
+      case 'segment-create': openSegmentCreate(); break;
+      case 'segment-save': saveSegment(); break;
+      case 'club-create': openClubCreate(); break;
+      case 'club-save': saveClub(); break;
       case 'connect-hr': connectHr(); break;
       case 'connect-bike': connectBike(); break;
       case 'connect-power': connectPower(); break;
@@ -4008,8 +4188,19 @@
     const club = e.target.closest('[data-club]');
     if (club) {
       const id = club.getAttribute('data-club');
-      state.joined.has(id) ? state.joined.delete(id) : state.joined.add(id);
-      toast(state.joined.has(id) ? 'Welcome to the club!' : 'Left the club');
+      const c = state.clubs.find(x => x.id === id);
+      const joining = !state.joined.has(id);
+      if (joining) {
+        state.joined.add(id);
+        if (c) c.members = (c.members || 0) + 1;
+        API().joinClub(id, myId() || 'anon', myName());
+        toast('Welcome to ' + (c ? c.name : 'the club') + '!');
+      } else {
+        state.joined.delete(id);
+        if (c && c.members > 0) c.members--;
+        API().leaveClub(id);
+        toast('Left ' + (c ? c.name : 'the club'));
+      }
       render(); return;
     }
     const ch = e.target.closest('[data-challenge]');
@@ -4036,6 +4227,13 @@
   });
 
   document.addEventListener('change', e => {
+    if (e.target.id === 'segActivity' && state.segmentForm) {
+      state.segmentForm.activityId = e.target.value;
+      const name = $('#segName');
+      if (name) name.value = '';
+      updateSegmentPreview();
+      return;
+    }
     if (e.target.id === 'ccKind' && state.challengeForm) {
       state.challengeForm.kind = e.target.value;
       renderCreateFields();
@@ -4093,24 +4291,27 @@
 
   function seedStateNow() {
     state.sensors = SENS() ? SENS().detect() : { list: [] };
-    state.challenges = dedupeById(D.SEED_CHALLENGES.map(normalizeChallenge).filter(Boolean));
+    state.challenges = [];
     state.popularAreas = D.popularAreas(state.activities);
-    state.hall = D.hallOfFame();
-    state.segments = D.SEGMENTS.slice();
+    state.segments = [];
+    state.hall = D.hallOfFame(state.segments);
+    state.clubs = [];
     state.places = D.PLACES.slice();
     state.joinedChallenges = API().joined ? API().joined() : [];
+    state.joined = new Set(API().joinedClubs ? API().joinedClubs() : []);
   }
   function applyBootData(res) {
     state.challenges = dedupeById((res[0] || []).map(normalizeChallenge).filter(Boolean));
     const areas = (res[1] || []).filter(a => a && isFinite(a.lat) && isFinite(a.lng));
     state.popularAreas = areas.length ? areas : D.popularAreas(state.activities);
+    state.segments = (res[3] || []).map(normalizeSegment).filter(Boolean);
     const hall = (res[2] || []).filter(Boolean);
-    if (hall.length) state.hall = hall;
-    const segs = (res[3] || []).filter(Boolean);
-    if (segs.length) state.segments = segs;
+    state.hall = hall.length ? hall : D.hallOfFame(state.segments);
     const places = (res[4] || []).filter(Boolean);
     if (places.length) state.places = places;
     state.joinedChallenges = API().joined ? API().joined() : [];
+    state.joined = new Set();
+    (API().joinedClubs ? API().joinedClubs() : []).forEach(id => state.joined.add(id));
     const ids = {};
     state.activities.forEach(a => { ids[a.id] = 1; });
     (res[5] || []).forEach(raw => {
@@ -4121,11 +4322,13 @@
       const g = normalizeGallery(raw);
       if (g && !state.gallery.some(x => x.id === g.id)) state.gallery.push(g);
     });
+    state.clubs = (res[7] || []).map(normalizeClub).filter(Boolean);
+    state.clubs.forEach(c => { if (c.joined) state.joined.add(c.id); });
+    if (!state.hall.length) state.hall = D.hallOfFame(state.segments);
   }
   function finishBoot() {
-    if (!state.challenges.length) state.challenges = dedupeById(D.SEED_CHALLENGES.map(normalizeChallenge).filter(Boolean));
     if (!state.popularAreas.length) state.popularAreas = D.popularAreas(state.activities);
-    if (!state.hall.length) state.hall = D.hallOfFame();
+    if (!state.hall.length) state.hall = D.hallOfFame(state.segments);
     render();
     let skipped = false;
     try { skipped = sessionStorage.getItem('rucha_skip_auth') === '1'; } catch (e) {}
@@ -4137,7 +4340,38 @@
     if (u.profileComplete === false) { openAuthScreen({ step: 'complete' }); return; }
     if (userNeedsConsent(u)) openConsentScreen();
   }
+  // Earlier RUCHA builds shipped demo rows. Remove those fingerprints from
+  // any cache written before the app became fully user-generated.
+  function purgeLegacyLocalContent() {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('rucha_store_v1_') === 0) keys.push(k);
+      }
+      keys.forEach(k => {
+        if (!/(^|_)(cache_)?(activities|challenges|segments|hall|gallery|popular)$/.test(k)) return;
+        let v;
+        try { v = JSON.parse(localStorage.getItem(k)); } catch (e) { return; }
+        if (!Array.isArray(v)) return;
+        if (/_popular$/.test(k)) { localStorage.removeItem(k); return; }
+        const clean = v.filter(x => {
+          if (!x || typeof x !== 'object') return false;
+          const id = String(x.id || x.segmentId || '');
+          if (/_activities$/.test(k)) return !(x.source === 'demo' || id.indexOf('seed_') === 0);
+          if (/_challenges$/.test(k)) return !(x.createdBy === 'RUCHA' && /^ch[1-7]$/.test(id));
+          if (/_segments$/.test(k)) return !/^s[1-6]$/.test(id);
+          if (/_hall$/.test(k)) return !/^s[1-6]$/.test(id);
+          if (/_gallery$/.test(k)) return !(x.sample || id.indexOf('sample_') === 0);
+          return true;
+        });
+        if (clean.length !== v.length) localStorage.setItem(k, JSON.stringify(clean));
+      });
+    } catch (e) { }
+  }
+
   function boot() {
+    purgeLegacyLocalContent();
     seedStateNow();
     hydrate(document.body);
     render();
@@ -4148,12 +4382,13 @@
     }
     Api.configure({
       fallback: {
-        challenges: D.SEED_CHALLENGES,
+        challenges: [],
         activities: [],
         gallery: [],
         popular: () => D.popularAreas(state.activities),
-        hall: () => D.hallOfFame(),
-        segments: () => D.SEGMENTS,
+        hall: () => D.hallOfFame(state.segments),
+        segments: [],
+        clubs: [],
         places: () => D.PLACES
       }
     });
@@ -4175,7 +4410,8 @@
       refreshSocial();
       return Promise.all([
         Api.getChallenges(), Api.getPopularAreas(), Api.getHallOfFame(),
-        Api.getSegments(), Api.getPlaces(), Api.getActivities(), Api.getGallery()
+        Api.getSegments(), Api.getPlaces(), Api.getActivities(), Api.getGallery(),
+        Api.getClubs ? Api.getClubs() : Promise.resolve([])
       ]);
     }).then(res => {
       applyBootData(res);

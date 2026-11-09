@@ -73,73 +73,6 @@ func fmtDuration(sec int) string {
 	return fmt.Sprintf("%d:%02d", m, s)
 }
 
-func fnv32(s string) uint32 {
-	h := uint32(2166136261)
-	for i := 0; i < len(s); i++ {
-		h = (h ^ uint32(s[i])) * 16777619
-	}
-	return h
-}
-
-func unitValue(h uint32, i int) float64 {
-	return float64(h+uint32(i+1)*2654435761) / 4294967296.0
-}
-
-var roster = []string{
-	"Selam Tesfaye", "Dawit Bekele", "Marta Lemma", "Yonas Girma",
-	"Hana Alemu", "Abel Tadesse", "Lidya Kebede", "Fasil Teshome",
-	"Tigist Haile", "Robel Mengistu",
-}
-
-func sampleProgress(c Challenge) []ChallengeProgress {
-	if c.OwnerID != "" || c.Mode == "head_to_head" {
-		return nil
-	}
-	metric, _, target := challengeMetric(c)
-	if target <= 0 {
-		return nil
-	}
-	h := fnv32(c.ID)
-	out := []ChallengeProgress{}
-	for i, name := range roster {
-		u := unitValue(h, i)
-		p := ChallengeProgress{
-			ChallengeID: c.ID, AthleteID: "sample_" + fmt.Sprint(i),
-			AthleteName: name, Attempts: 1,
-		}
-		if isTimeTrial(c) {
-			p.Completed = u > 0.34
-			if p.Completed {
-				p.DistanceKm = target
-				p.DurationSec = int(float64(c.TargetSeconds)*0.82 + float64(c.TargetSeconds)*0.3*u)
-				if p.DurationSec <= 0 {
-					p.DurationSec = int(target*300*(0.78+0.42*u)) + 1
-				}
-				p.BestSeconds = p.DurationSec
-				p.FinishedAt = time.Now().UTC().Add(-time.Duration(u*72) * time.Hour).Format(time.RFC3339)
-			} else {
-				p.DistanceKm = target * (0.12 + 0.72*u)
-				p.DurationSec = int(p.DistanceKm * 300)
-			}
-		} else {
-			p.Completed = u > 0.85
-			if p.Completed {
-				p.DistanceKm, p.ElevationM = target, int(target)
-				p.FinishedAt = time.Now().UTC().Add(-time.Duration(u*72) * time.Hour).Format(time.RFC3339)
-			} else {
-				p.DistanceKm = target * (0.08 + 0.82*u)
-				p.ElevationM = int(p.DistanceKm)
-			}
-			p.DurationSec = int(p.DistanceKm * 300)
-		}
-		if metric == "elevation" {
-			p.DistanceKm = 0
-		}
-		out = append(out, p)
-	}
-	return out
-}
-
 func progressValue(c Challenge, p ChallengeProgress) float64 {
 	metric, _, _ := challengeMetric(c)
 	if metric == "elevation" {
@@ -155,7 +88,6 @@ func buildLeaderboard(c Challenge, v Viewer, members map[string]string, real []C
 		ranking = "time"
 	}
 	rows := []ChallengeProgress{}
-	rows = append(rows, sampleProgress(c)...)
 	rows = append(rows, real...)
 	if c.Mode == "head_to_head" && c.InviteStatus == "accepted" {
 		for _, pair := range [][2]string{{c.OwnerID, c.OwnerName}, {c.OpponentID, c.OpponentName}} {

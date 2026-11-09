@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS activities (
   visibility  TEXT NOT NULL DEFAULT 'private',
   start_lat   DOUBLE PRECISION NOT NULL DEFAULT 0,
   start_lng   DOUBLE PRECISION NOT NULL DEFAULT 0,
-  source      TEXT NOT NULL DEFAULT 'demo',
+  source      TEXT NOT NULL DEFAULT 'gps',
   payload     JSONB NOT NULL,
   payload_gz    BYTEA,
   payload_bytes INTEGER NOT NULL DEFAULT 0
@@ -73,7 +73,30 @@ CREATE TABLE IF NOT EXISTS challenge_progress (
 CREATE INDEX IF NOT EXISTS idx_progress_challenge ON challenge_progress (challenge_id);
 
 CREATE TABLE IF NOT EXISTS places   (name TEXT PRIMARY KEY, payload JSONB NOT NULL);
-CREATE TABLE IF NOT EXISTS segments (id   TEXT PRIMARY KEY, payload JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS segments (
+  id          TEXT PRIMARY KEY,
+  owner_id    TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload     JSONB NOT NULL
+);
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS owner_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_segments_owner ON segments (owner_id);
+
+CREATE TABLE IF NOT EXISTS clubs (
+  id          TEXT PRIMARY KEY,
+  owner_id    TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload     JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_clubs_owner ON clubs (owner_id);
+CREATE TABLE IF NOT EXISTS club_members (
+  club_id      TEXT NOT NULL,
+  athlete_id   TEXT NOT NULL,
+  athlete_name TEXT NOT NULL DEFAULT '',
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (club_id, athlete_id)
+);
 
 CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,

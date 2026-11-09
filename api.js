@@ -4,7 +4,8 @@
   var PREFIX = 'rucha_store_v1_';
   var K = {
     challenges: 'challenges', activities: 'activities', gallery: 'gallery',
-    joined: 'joined', progress: 'progress', goals: 'goals'
+    joined: 'joined', progress: 'progress', goals: 'goals',
+    segments: 'segments', clubs: 'clubs', joinedClubs: 'joinedClubs'
   };
 
   function scope() {
@@ -276,8 +277,27 @@
 
     getPopularAreas: function () { return read('areas/popular', 'popular', false); },
     getHallOfFame: function () { return read('halloffame', 'hall', false); },
-    getSegments: function () { return read('segments', 'segments', false); },
+    getSegments: function () { return read('segments', K.segments, true); },
+    addSegment: function (s) { return write('segments', K.segments, s, 'POST'); },
     getPlaces: function () { return read('places', 'places', false); },
+
+    getClubs: function () { return read('clubs', K.clubs, true); },
+    addClub: function (c) { return write('clubs', K.clubs, c, 'POST'); },
+    joinClub: function (id, athlete, name) {
+      var j = lsGet(K.joinedClubs, []);
+      if (j.indexOf(id) < 0) { j.push(id); lsSet(K.joinedClubs, j); }
+      if (!st.online) return Promise.resolve({ joined: true, athleteId: athlete || 'anon' });
+      return request('clubs/join', { method: 'POST', body: { clubId: id, athleteId: athlete || 'anon', athleteName: name || 'You' } })
+        .catch(function () { return { joined: true, athleteId: athlete || 'anon' }; });
+    },
+    leaveClub: function (id) {
+      var j = lsGet(K.joinedClubs, []);
+      lsSet(K.joinedClubs, j.filter(function (x) { return x !== id; }));
+      if (!st.online) return Promise.resolve({ joined: false });
+      return request('clubs/join', { method: 'POST', body: { clubId: id, leave: true } })
+        .catch(function () { return { joined: false }; });
+    },
+    joinedClubs: function () { return lsGet(K.joinedClubs, []); },
 
     getActivities: function () { return read('activities', K.activities, true); },
     addActivity: function (a) { return write('activities', K.activities, a, 'POST'); },

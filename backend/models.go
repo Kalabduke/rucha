@@ -53,7 +53,6 @@ type GalleryCard struct {
 	DistanceKm float64 `json:"distanceKm"`
 	Duration   string  `json:"duration"`
 	City       string  `json:"city"`
-	Sample     bool    `json:"sample"`
 	CreatedAt  string  `json:"createdAt"`
 }
 
@@ -137,19 +136,39 @@ type Place struct {
 }
 
 type Segment struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	City        string  `json:"city"`
-	StartLat    float64 `json:"startLat"`
-	StartLng    float64 `json:"startLng"`
-	EndLat      float64 `json:"endLat"`
-	EndLng      float64 `json:"endLng"`
-	Km          float64 `json:"km"`
-	GainM       int     `json:"gainM"`
-	Cat         string  `json:"cat"`
-	Type        string  `json:"type"`
-	BestSeconds int     `json:"bestSeconds"`
-	Attempts    int     `json:"attempts"`
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	City            string  `json:"city"`
+	StartLat        float64 `json:"startLat"`
+	StartLng        float64 `json:"startLng"`
+	EndLat          float64 `json:"endLat"`
+	EndLng          float64 `json:"endLng"`
+	Km              float64 `json:"km"`
+	GainM           int     `json:"gainM"`
+	Cat             string  `json:"cat"`
+	Type            string  `json:"type"`
+	BestSeconds     int     `json:"bestSeconds"`
+	Attempts        int     `json:"attempts"`
+	OwnerID         string  `json:"ownerId,omitempty"`
+	OwnerName       string  `json:"ownerName,omitempty"`
+	BestAthleteID   string  `json:"bestAthleteId,omitempty"`
+	BestAthleteName string  `json:"bestAthleteName,omitempty"`
+	ActivityID      string  `json:"activityId,omitempty"`
+	CreatedAt       string  `json:"createdAt,omitempty"`
+}
+
+type Club struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	City        string `json:"city"`
+	Type        string `json:"type"`
+	Color       string `json:"color"`
+	OwnerID     string `json:"ownerId,omitempty"`
+	OwnerName   string `json:"ownerName,omitempty"`
+	Members     int    `json:"members"`
+	Joined      bool   `json:"joined"`
+	CreatedAt   string `json:"createdAt,omitempty"`
 }
 
 type PopularArea struct {

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS activities (
   visibility  TEXT NOT NULL DEFAULT 'private',
   start_lat   DOUBLE PRECISION NOT NULL DEFAULT 0,
   start_lng   DOUBLE PRECISION NOT NULL DEFAULT 0,
-  source      TEXT NOT NULL DEFAULT 'demo',
+  source      TEXT NOT NULL DEFAULT 'gps',
   payload       JSONB NOT NULL,
   payload_gz    BYTEA,
   payload_bytes INTEGER NOT NULL DEFAULT 0
@@ -97,7 +97,30 @@ CREATE TABLE IF NOT EXISTS challenge_progress (
 CREATE INDEX IF NOT EXISTS idx_progress_challenge ON challenge_progress (challenge_id);
 
 CREATE TABLE IF NOT EXISTS places   (name TEXT PRIMARY KEY, payload JSONB NOT NULL);
-CREATE TABLE IF NOT EXISTS segments (id   TEXT PRIMARY KEY, payload JSONB NOT NULL);
+CREATE TABLE IF NOT EXISTS segments (
+  id          TEXT PRIMARY KEY,
+  owner_id    TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload     JSONB NOT NULL
+);
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS owner_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_segments_owner ON segments (owner_id);
+
+CREATE TABLE IF NOT EXISTS clubs (
+  id          TEXT PRIMARY KEY,
+  owner_id    TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload     JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_clubs_owner ON clubs (owner_id);
+CREATE TABLE IF NOT EXISTS club_members (
+  club_id      TEXT NOT NULL,
+  athlete_id   TEXT NOT NULL,
+  athlete_name TEXT NOT NULL DEFAULT '',
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (club_id, athlete_id)
+);
 `
 
 type PgStore struct{ db *sql.DB }
@@ -121,6 +144,9 @@ func NewPgStore(url string) (*PgStore, error) {
 	if err = p.seedIfEmpty(); err != nil {
 		db.Close()
 		return nil, err
+	}
+	if err = p.purgeLegacyDemo(); err != nil {
+		log.Printf("legacy demo cleanup skipped: %v", err)
 	}
 	if err = p.backfillSizes(); err != nil {
 		log.Printf("payload size backfill skipped: %v", err)
@@ -160,39 +186,29 @@ func (p *PgStore) seedIfEmpty() error {
 			}
 		}
 	}
-	if err := p.db.QueryRow(`SELECT count(*) FROM segments`).Scan(&n); err != nil {
+	return nil
+}
+
+// purgeLegacyDemo removes the demo rows shipped by earlier RUCHA builds so
+// the feed, segments and challenges start empty for every deployment.
+func (p *PgStore) purgeLegacyDemo() error {
+	if _, err := p.db.Exec(`DELETE FROM activities WHERE source='demo' OR id LIKE 'seed\_%' ESCAPE '\'`); err != nil {
 		return err
 	}
-	if n == 0 {
-		for _, sg := range seedSegments() {
-			raw, err := json.Marshal(sg)
-			if err != nil {
-				return err
-			}
-			if _, err := p.db.Exec(`INSERT INTO segments (id,payload) VALUES ($1,$2::jsonb) ON CONFLICT DO NOTHING`, sg.ID, string(raw)); err != nil {
-				return err
-			}
-		}
-	}
-	if err := p.db.QueryRow(`SELECT count(*) FROM activities`).Scan(&n); err != nil {
+	if _, err := p.db.Exec(`DELETE FROM gallery_cards WHERE id LIKE 'sample\_%' ESCAPE '\' OR payload->>'sample' = 'true'`); err != nil {
 		return err
 	}
-	if n == 0 {
-		for _, a := range seedActivities() {
-			if err := p.AddActivity(a); err != nil {
-				return err
-			}
-		}
-	}
-	if err := p.db.QueryRow(`SELECT count(*) FROM challenges`).Scan(&n); err != nil {
+	if _, err := p.db.Exec(`DELETE FROM challenge_progress WHERE challenge_id IN ('ch1','ch2','ch3','ch4','ch5','ch6','ch7')`); err != nil {
 		return err
 	}
-	if n == 0 {
-		for _, c := range seedChallenges() {
-			if err := p.AddChallenge(c); err != nil {
-				return err
-			}
-		}
+	if _, err := p.db.Exec(`DELETE FROM challenge_members WHERE challenge_id IN ('ch1','ch2','ch3','ch4','ch5','ch6','ch7')`); err != nil {
+		return err
+	}
+	if _, err := p.db.Exec(`DELETE FROM challenges WHERE id IN ('ch1','ch2','ch3','ch4','ch5','ch6','ch7')`); err != nil {
+		return err
+	}
+	if _, err := p.db.Exec(`DELETE FROM segments WHERE id IN ('s1','s2','s3','s4','s5','s6')`); err != nil {
+		return err
 	}
 	return nil
 }
@@ -462,7 +478,7 @@ func (p *PgStore) Places() ([]Place, error) {
 }
 
 func (p *PgStore) Segments() ([]Segment, error) {
-	rows, err := p.db.Query(`SELECT payload FROM segments`)
+	rows, err := p.db.Query(`SELECT payload FROM segments ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -479,6 +495,21 @@ func (p *PgStore) Segments() ([]Segment, error) {
 		}
 	}
 	return out, rows.Err()
+}
+
+func (p *PgStore) AddSegment(sg Segment) error {
+	raw, err := json.Marshal(sg)
+	if err != nil {
+		return err
+	}
+	created := parseTime(sg.CreatedAt)
+	_, err = p.db.Exec(`
+INSERT INTO segments (id,owner_id,created_at,payload)
+VALUES ($1,$2,$3,$4::jsonb)
+ON CONFLICT (id) DO UPDATE SET owner_id=EXCLUDED.owner_id,
+  payload=EXCLUDED.payload`,
+		sg.ID, sg.OwnerID, created, string(raw))
+	return err
 }
 
 func (p *PgStore) PopularAreas() ([]PopularArea, error) {
@@ -508,18 +539,130 @@ func (p *PgStore) HallOfFame() ([]HallEntry, error) {
 		return nil, err
 	}
 	places, _ := p.Places()
-	names := []string{"Selam Tesfaye", "Dawit Bekele", "Marta Lemma", "Yonas Girma", "Hana Alemu", "Abel Tadesse"}
 	out := []HallEntry{}
-	for i, sg := range segments {
+	for _, sg := range segments {
+		if sg.BestSeconds <= 0 {
+			continue
+		}
 		place, _ := nearestPlace(places, sg.StartLat, sg.StartLng)
+		name := sg.BestAthleteName
+		if name == "" {
+			name = sg.OwnerName
+		}
+		if name == "" {
+			name = "Athlete"
+		}
 		out = append(out, HallEntry{
 			SegmentID: sg.ID, SegmentName: sg.Name,
-			AthleteName: names[i%len(names)], Seconds: sg.BestSeconds,
+			AthleteName: name, Seconds: sg.BestSeconds,
 			StartLat: sg.StartLat, StartLng: sg.StartLng, PlaceName: place,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Seconds < out[j].Seconds })
 	return out, nil
+}
+
+func (p *PgStore) Clubs() ([]Club, error) {
+	rows, err := p.db.Query(`SELECT payload FROM clubs ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Club{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var c Club
+		if err := json.Unmarshal(raw, &c); err == nil {
+			out = append(out, c)
+		}
+	}
+	return out, rows.Err()
+}
+
+func (p *PgStore) AddClub(c Club) error {
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	_, err = p.db.Exec(`
+INSERT INTO clubs (id,owner_id,created_at,payload)
+VALUES ($1,$2,$3,$4::jsonb)
+ON CONFLICT (id) DO UPDATE SET payload=EXCLUDED.payload`,
+		c.ID, c.OwnerID, parseTime(c.CreatedAt), string(raw))
+	return err
+}
+
+func (p *PgStore) JoinClub(id, athlete, athleteName string) error {
+	if athlete == "" {
+		athlete = "me"
+	}
+	if athleteName == "" {
+		athleteName = "You"
+	}
+	res, err := p.db.Exec(`INSERT INTO club_members (club_id,athlete_id,athlete_name) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, id, athlete, athleteName)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil
+	}
+	list, err := p.Clubs()
+	if err != nil {
+		return nil
+	}
+	for _, c := range list {
+		if c.ID == id {
+			c.Members++
+			return p.AddClub(c)
+		}
+	}
+	return nil
+}
+
+func (p *PgStore) LeaveClub(id, athlete string) error {
+	if athlete == "" {
+		return nil
+	}
+	res, err := p.db.Exec(`DELETE FROM club_members WHERE club_id=$1 AND athlete_id=$2`, id, athlete)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil
+	}
+	list, err := p.Clubs()
+	if err != nil {
+		return nil
+	}
+	for _, c := range list {
+		if c.ID == id {
+			if c.Members > 0 {
+				c.Members--
+			}
+			return p.AddClub(c)
+		}
+	}
+	return nil
+}
+
+func (p *PgStore) ClubMembers(id string) (map[string]string, error) {
+	rows, err := p.db.Query(`SELECT athlete_id, athlete_name FROM club_members WHERE club_id=$1`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
 }
 
 type StorageStats struct {

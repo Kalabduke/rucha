@@ -11,11 +11,13 @@ the app works offline.
 
 - **Activity recording** — GPS runs and rides with live distance, pace, speed,
   elevation and heart-rate readouts.
-- **Maps and segments** — route drawing, local segment leaderboards, and
-  point-to-point, distance/time-trial and vertical challenges.
+- **Maps and segments** — route drawing, user-created segments and local
+  segment leaderboards, plus point-to-point, distance/time-trial and vertical
+  challenges.
 - **Training goals** — weekly distance goals, streaks, challenge progress and a
-  hall of fame.
-- **Community** — feed, kudos, comments, follows, clubs and notifications.
+  hall of fame built from real segment records.
+- **Community** — feed, kudos, comments, follows, user-created clubs and
+  notifications.
 - **Sensors** — Web Bluetooth heart-rate straps and smartwatch broadcasts, plus
   device motion/temperature sensors where supported.
 - **Accounts** — Telegram (featured), Google and Apple sign-in through the
@@ -37,7 +39,7 @@ legal.css           Shared styling for Help, Privacy and Terms pages
 help.html           How RUCHA works
 privacy.html        Privacy Policy
 terms.html          Terms of Use
-data.js             Demo data, routes, challenges, translations
+data.js             Reference data, map helpers and translations
 app.js              UI, GPS recording, maps, social features
 auth.js             Client-side auth (API mode and offline mode)
 api.js              Backend API client
@@ -49,7 +51,7 @@ backend/
   auth.go           Accounts, consent, password auth and sessions
   social_auth.go    Telegram and Google sign-in
   apple_auth.go     Apple ID token verification
-  challenges.go     Challenges, segments, goals, social feed
+  challenges.go     Challenges, goals and social feed
   store.go          Data access layer
   pg.go             PostgreSQL helpers
   migrations/       Database schema

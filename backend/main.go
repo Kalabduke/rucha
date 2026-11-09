@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -65,6 +66,8 @@ func main() {
 	mux.HandleFunc("/api/areas/popular", handlePopular)
 	mux.HandleFunc("/api/places", handlePlaces)
 	mux.HandleFunc("/api/segments", handleSegments)
+	mux.HandleFunc("/api/clubs", handleClubs)
+	mux.HandleFunc("/api/clubs/join", handleClubJoin)
 	mux.HandleFunc("/api/halloffame", handleHall)
 	mux.HandleFunc("/api/auth/config", handleAuthConfig)
 	mux.HandleFunc("/api/auth/username", handleUsernameCheck)
@@ -216,7 +219,7 @@ func handleActivities(w http.ResponseWriter, r *http.Request) {
 			a.HRSource = "none"
 		}
 		if a.Source == "" {
-			a.Source = "demo"
+			a.Source = "gps"
 		}
 
 		a.OwnerID = v.ID
@@ -319,12 +322,237 @@ func handlePlaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSegments(w http.ResponseWriter, r *http.Request) {
-	list, err := store.Segments()
-	if err != nil {
+	switch r.Method {
+	case http.MethodGet:
+		list, err := store.Segments()
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, list)
+	case http.MethodPost:
+		v := currentViewer(tokenFrom(r))
+		if v.ID == "" {
+			fail(w, 401, errNotAuthed.Error())
+			return
+		}
+		var sg Segment
+		if err := decode(r, &sg); err != nil {
+			fail(w, 400, "invalid JSON: "+err.Error())
+			return
+		}
+		sg.Name = strings.TrimSpace(sg.Name)
+		if sg.Name == "" || len(sg.Name) > 80 {
+			fail(w, 400, "segment name must be 1-80 characters")
+			return
+		}
+		if math.IsNaN(sg.Km) || math.IsInf(sg.Km, 0) || sg.Km <= 0 || sg.Km > 2000 {
+			fail(w, 400, "segment distance is out of range")
+			return
+		}
+		if sg.GainM < 0 || sg.GainM > 100000 || sg.BestSeconds < 0 || sg.BestSeconds > 864000 {
+			fail(w, 400, "segment gain or time is out of range")
+			return
+		}
+		for _, pair := range [][3]float64{{sg.StartLat, -90, 90}, {sg.EndLat, -90, 90}, {sg.StartLng, -180, 180}, {sg.EndLng, -180, 180}} {
+			if math.IsNaN(pair[0]) || math.IsInf(pair[0], 0) || pair[0] < pair[1] || pair[0] > pair[2] {
+				fail(w, 400, "segment coordinates are out of range")
+				return
+			}
+		}
+		if sg.Type != "ride" {
+			sg.Type = "run"
+		}
+		if sg.Cat == "" {
+			sg.Cat = categoryFor(sg.GainM, sg.Km)
+		}
+		if sg.Attempts < 0 {
+			sg.Attempts = 0
+		}
+		if sg.Attempts > 1000000 {
+			fail(w, 400, "segment attempts are out of range")
+			return
+		}
+		if sg.ID == "" {
+			sg.ID = fmt.Sprintf("seg_%d", time.Now().UnixNano())
+		}
+		if sg.CreatedAt == "" {
+			sg.CreatedAt = nowISO()
+		}
+		existing, found := Segment{}, false
+		if list, err := store.Segments(); err == nil {
+			for _, x := range list {
+				if x.ID == sg.ID {
+					existing, found = x, true
+					break
+				}
+			}
+		}
+		if found {
+			// Course records can be improved by any signed-in athlete, but the
+			// route definition and ownership stay with the creator.
+			sg.Name = existing.Name
+			sg.City = existing.City
+			sg.StartLat, sg.StartLng = existing.StartLat, existing.StartLng
+			sg.EndLat, sg.EndLng = existing.EndLat, existing.EndLng
+			sg.Km, sg.GainM, sg.Cat, sg.Type = existing.Km, existing.GainM, existing.Cat, existing.Type
+			sg.OwnerID, sg.OwnerName = existing.OwnerID, existing.OwnerName
+			sg.ActivityID, sg.CreatedAt = existing.ActivityID, existing.CreatedAt
+			if sg.Attempts < existing.Attempts {
+				sg.Attempts = existing.Attempts
+			}
+			if existing.BestSeconds > 0 && (sg.BestSeconds <= 0 || existing.BestSeconds < sg.BestSeconds) {
+				sg.BestSeconds = existing.BestSeconds
+				sg.BestAthleteID, sg.BestAthleteName = existing.BestAthleteID, existing.BestAthleteName
+			}
+		} else {
+			sg.OwnerID, sg.OwnerName = v.ID, v.Username
+			if sg.BestSeconds > 0 {
+				sg.BestAthleteID, sg.BestAthleteName = v.ID, v.Username
+			}
+		}
+		if err := store.AddSegment(sg); err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, sg)
+	default:
+		fail(w, 405, "GET or POST only")
+	}
+}
+
+func categoryFor(gainM int, km float64) string {
+	if km <= 0 {
+		return "5"
+	}
+	g := float64(gainM) / km
+	switch {
+	case g >= 80:
+		return "HC"
+	case g >= 45:
+		return "1"
+	case g >= 25:
+		return "2"
+	case g >= 12:
+		return "3"
+	case g >= 4:
+		return "4"
+	default:
+		return "5"
+	}
+}
+
+func handleClubs(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		v := currentViewer(tokenFrom(r))
+		list, err := store.Clubs()
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		out := []Club{}
+		for _, c := range list {
+			c.Joined = false
+			if v.ID != "" {
+				m, _ := store.ClubMembers(c.ID)
+				c.Joined = m[v.ID] != ""
+			}
+			out = append(out, c)
+		}
+		writeJSON(w, out)
+	case http.MethodPost:
+		v := currentViewer(tokenFrom(r))
+		if v.ID == "" {
+			fail(w, 401, "sign in to create a club")
+			return
+		}
+		var c Club
+		if err := decode(r, &c); err != nil {
+			fail(w, 400, "invalid JSON: "+err.Error())
+			return
+		}
+		c.Name = strings.TrimSpace(c.Name)
+		if c.Name == "" || len(c.Name) > 60 {
+			fail(w, 400, "club name must be 1-60 characters")
+			return
+		}
+		c.Description = strings.TrimSpace(c.Description)
+		if len(c.Description) > 300 {
+			c.Description = c.Description[:300]
+		}
+		if c.Type != "ride" {
+			c.Type = "run"
+		}
+		if c.Color == "" || len(c.Color) > 20 {
+			c.Color = "#0B6E56"
+		}
+		if c.ID == "" {
+			c.ID = fmt.Sprintf("club_%d", time.Now().UnixNano())
+		}
+		if c.CreatedAt == "" {
+			c.CreatedAt = nowISO()
+		}
+		c.OwnerID, c.OwnerName = v.ID, v.Username
+		c.Members = 0
+		c.Joined = true
+		if err := store.AddClub(c); err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		if err := store.JoinClub(c.ID, v.ID, v.Username); err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		c.Members = 1
+		writeJSON(w, c)
+	default:
+		fail(w, 405, "GET or POST only")
+	}
+}
+
+func handleClubJoin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, 405, "POST only")
+		return
+	}
+	var body struct {
+		ClubID      string `json:"clubId"`
+		AthleteID   string `json:"athleteId"`
+		AthleteName string `json:"athleteName"`
+		Leave       bool   `json:"leave"`
+	}
+	if err := decode(r, &body); err != nil || body.ClubID == "" {
+		fail(w, 400, "clubId is required")
+		return
+	}
+	found := false
+	list, _ := store.Clubs()
+	for _, c := range list {
+		if c.ID == body.ClubID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		fail(w, 404, "club not found")
+		return
+	}
+	v := currentViewer(tokenFrom(r))
+	id, name := athleteFor(v, body.AthleteID, body.AthleteName)
+	if body.Leave {
+		if err := store.LeaveClub(body.ClubID, id); err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]interface{}{"joined": false, "athleteId": id})
+		return
+	}
+	if err := store.JoinClub(body.ClubID, id, name); err != nil {
 		fail(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, list)
+	writeJSON(w, map[string]interface{}{"joined": true, "athleteId": id})
 }
 
 func handleHall(w http.ResponseWriter, r *http.Request) {

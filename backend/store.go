@@ -5,7 +5,6 @@ import (
 	"math"
 	"sort"
 	"sync"
-	"time"
 )
 
 type Store interface {
@@ -26,31 +25,41 @@ type Store interface {
 	PopularAreas() ([]PopularArea, error)
 	Places() ([]Place, error)
 	Segments() ([]Segment, error)
+	AddSegment(s Segment) error
 	HallOfFame() ([]HallEntry, error)
+	Clubs() ([]Club, error)
+	AddClub(c Club) error
+	JoinClub(id, athlete, athleteName string) error
+	LeaveClub(id, athlete string) error
+	ClubMembers(id string) (map[string]string, error)
 }
 
 type MemStore struct {
-	mu         sync.RWMutex
-	activities []Activity
-	gallery    []GalleryCard
-	challenges []Challenge
-	joined     map[string]bool
-	members    map[string]map[string]string
-	progress   map[string]map[string]ChallengeProgress
-	places     []Place
-	segments   []Segment
+	mu          sync.RWMutex
+	activities  []Activity
+	gallery     []GalleryCard
+	challenges  []Challenge
+	joined      map[string]bool
+	members     map[string]map[string]string
+	progress    map[string]map[string]ChallengeProgress
+	places      []Place
+	segments    []Segment
+	clubs       []Club
+	clubMembers map[string]map[string]string
 }
 
 func NewMemStore() *MemStore {
 	return &MemStore{
-		activities: seedActivities(),
-		gallery:    []GalleryCard{},
-		challenges: seedChallenges(),
-		joined:     map[string]bool{},
-		members:    map[string]map[string]string{},
-		progress:   map[string]map[string]ChallengeProgress{},
-		places:     seedPlaces(),
-		segments:   seedSegments(),
+		activities:  []Activity{},
+		gallery:     []GalleryCard{},
+		challenges:  []Challenge{},
+		joined:      map[string]bool{},
+		members:     map[string]map[string]string{},
+		progress:    map[string]map[string]ChallengeProgress{},
+		places:      seedPlaces(),
+		segments:    []Segment{},
+		clubs:       []Club{},
+		clubMembers: map[string]map[string]string{},
 	}
 }
 
@@ -229,7 +238,21 @@ func (s *MemStore) Segments() ([]Segment, error) {
 	defer s.mu.RUnlock()
 	out := make([]Segment, len(s.segments))
 	copy(out, s.segments)
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
 	return out, nil
+}
+
+func (s *MemStore) AddSegment(seg Segment) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.segments {
+		if s.segments[i].ID == seg.ID {
+			s.segments[i] = seg
+			return nil
+		}
+	}
+	s.segments = append([]Segment{seg}, s.segments...)
+	return nil
 }
 
 func (s *MemStore) PopularAreas() ([]PopularArea, error) {
@@ -264,15 +287,100 @@ func (s *MemStore) PopularAreas() ([]PopularArea, error) {
 func (s *MemStore) HallOfFame() ([]HallEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	names := []string{"Selam Tesfaye", "Dawit Bekele", "Marta Lemma", "Yonas Girma", "Hana Alemu", "Abel Tadesse"}
 	out := []HallEntry{}
-	for i, sg := range s.segments {
+	for _, sg := range s.segments {
+		if sg.BestSeconds <= 0 {
+			continue
+		}
 		place, _ := nearestPlace(s.places, sg.StartLat, sg.StartLng)
+		name := sg.BestAthleteName
+		if name == "" {
+			name = sg.OwnerName
+		}
+		if name == "" {
+			name = "Athlete"
+		}
 		out = append(out, HallEntry{
 			SegmentID: sg.ID, SegmentName: sg.Name,
-			AthleteName: names[i%len(names)], Seconds: sg.BestSeconds,
+			AthleteName: name, Seconds: sg.BestSeconds,
 			StartLat: sg.StartLat, StartLng: sg.StartLng, PlaceName: place,
 		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seconds < out[j].Seconds })
+	return out, nil
+}
+
+func (s *MemStore) Clubs() ([]Club, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Club, len(s.clubs))
+	copy(out, s.clubs)
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	return out, nil
+}
+
+func (s *MemStore) AddClub(c Club) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.clubs {
+		if s.clubs[i].ID == c.ID {
+			s.clubs[i] = c
+			return nil
+		}
+	}
+	s.clubs = append([]Club{c}, s.clubs...)
+	return nil
+}
+
+func (s *MemStore) JoinClub(id, athlete, athleteName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if athlete == "" {
+		athlete = "me"
+	}
+	if s.clubMembers[id] == nil {
+		s.clubMembers[id] = map[string]string{}
+	}
+	if _, exists := s.clubMembers[id][athlete]; exists {
+		return nil
+	}
+	s.clubMembers[id][athlete] = athleteName
+	for i := range s.clubs {
+		if s.clubs[i].ID == id {
+			s.clubs[i].Members++
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *MemStore) LeaveClub(id, athlete string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.clubMembers[id] == nil {
+		return nil
+	}
+	if _, exists := s.clubMembers[id][athlete]; !exists {
+		return nil
+	}
+	delete(s.clubMembers[id], athlete)
+	for i := range s.clubs {
+		if s.clubs[i].ID == id {
+			if s.clubs[i].Members > 0 {
+				s.clubs[i].Members--
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *MemStore) ClubMembers(id string) (map[string]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := map[string]string{}
+	for k, v := range s.clubMembers[id] {
+		out[k] = v
 	}
 	return out, nil
 }
@@ -323,83 +431,5 @@ func seedPlaces() []Place {
 		{"Fasil Ghebbi", 12.6000, 37.4667, "building", "Gondar"},
 		{"Harar Jugol", 9.3139, 42.1181, "district", "Harar"},
 		{"Mekelle Market", 13.4967, 39.4753, "market", "Mekelle"},
-	}
-}
-
-func seedSegments() []Segment {
-	return []Segment{
-		{"s1", "Entoto Hill Climb", "Addis Ababa", 9.0470, 38.7570, 9.1150, 38.7550, 6.8, 612, "HC", "run", 1542, 4821},
-		{"s2", "Meskel Square Straight", "Addis Ababa", 9.0107, 38.7610, 9.0140, 38.7520, 1.2, 4, "4", "run", 205, 9120},
-		{"s3", "Bole Road Flyer", "Addis Ababa", 8.9779, 38.7993, 9.0107, 38.7610, 2.4, 12, "3", "ride", 248, 3310},
-		{"s4", "Saris Rise", "Addis Ababa", 8.9600, 38.7400, 9.0107, 38.7610, 3.1, 96, "2", "run", 648, 2740},
-		{"s5", "Bishoftu Lake Circuit", "Bishoftu", 8.7380, 38.9850, 8.7410, 38.9870, 12.6, 42, "3", "ride", 1420, 1890},
-		{"s6", "Unity Park 400", "Addis Ababa", 9.0130, 38.7540, 9.0160, 38.7570, 0.4, 1, "5", "run", 66, 6402},
-	}
-}
-
-func seedActivities() []Activity {
-	now := time.Now().UTC()
-	type def struct {
-		title, typ, city   string
-		lat, lng, km, pace float64
-		gain               int
-	}
-	defs := []def{
-		{"Meskel Square Loop", "run", "Addis Ababa", 9.0107, 38.7610, 8.6, 298, 42},
-		{"Meskel Square Tempo", "run", "Addis Ababa", 9.0107, 38.7610, 6.2, 276, 28},
-		{"Meskel Square Sunrise", "run", "Addis Ababa", 9.0107, 38.7610, 5.1, 312, 22},
-		{"Meskel Square Recovery", "run", "Addis Ababa", 9.0107, 38.7610, 4.3, 352, 18},
-		{"Unity Park Easy Shakeout", "run", "Addis Ababa", 9.0130, 38.7540, 5.2, 352, 12},
-		{"Unity Park 400 Repeats", "run", "Addis Ababa", 9.0130, 38.7540, 7.4, 288, 16},
-		{"Unity Park Club Run", "run", "Addis Ababa", 9.0130, 38.7540, 10.1, 318, 24},
-		{"Entoto Natural Park Trail", "run", "Entoto Hills", 9.1000, 38.7300, 11.8, 388, 410},
-		{"Entoto Maryam Ascent", "run", "Entoto Hills", 9.1150, 38.7550, 9.4, 402, 520},
-		{"Bole Road Tempo", "run", "Addis Ababa", 8.9779, 38.7993, 10.1, 276, 34},
-		{"Kazanchis to Saris Long Run", "run", "Addis Ababa", 9.0200, 38.7620, 21.3, 336, 188},
-		{"Bishoftu Lake Circuit", "ride", "Bishoftu", 8.7380, 38.9850, 32.6, 118, 42},
-	}
-	out := []Activity{}
-	for i, d := range defs {
-		ts := now.AddDate(0, 0, -i).Format(time.RFC3339)
-		cal := int(d.km * 62)
-		if d.typ == "ride" {
-			cal = int(d.km * 31)
-		}
-		out = append(out, Activity{
-			ID: fmt.Sprintf("seed_%02d", i+1), Title: d.title, Type: d.typ,
-			AthleteID: "u0", AthleteName: "RUCHA Community", City: d.city,
-			StartLat: d.lat, StartLng: d.lng, EndLat: d.lat, EndLng: d.lng,
-			DistanceKm: d.km, DurationSec: int(d.km * d.pace), PaceSecPerKm: d.pace,
-			ElevationGainM: d.gain, Calories: cal, HRSource: "none", Source: "demo",
-			Track: []TrackPoint{}, StartedAt: ts, CreatedAt: ts,
-		})
-	}
-	return out
-}
-
-func seedChallenges() []Challenge {
-	f := func(v float64) *float64 { return &v }
-	end := time.Now().UTC().AddDate(0, 0, 14).Format(time.RFC3339)
-	def := func(id, kind, title, desc string, sl, slng, el, elng *float64,
-		sn, en string, km float64, sec, elev int, seg string, geo, prize int,
-		members int) Challenge {
-		return Challenge{
-			ID: id, Kind: kind, Title: title, Description: desc,
-			StartLat: sl, StartLng: slng, StartName: sn,
-			EndLat: el, EndLng: elng, EndName: en,
-			TargetKm: km, TargetSeconds: sec, TargetElevationM: elev,
-			SegmentID: seg, GeofenceM: geo, PrizeBr: prize, Members: members,
-			CreatedBy: "RUCHA", EndsAt: end, Visibility: "everyone",
-			Mode: "open", CreatedAt: nowISO(),
-		}
-	}
-	return []Challenge{
-		def("ch1", "route", "Meskel Square to Entoto Maryam", "Climb from the city centre to the Entoto ridge. Start at the square, finish at the church.", f(9.0107), f(38.7610), f(9.1150), f(38.7550), "Meskel Square", "Entoto Maryam", 12.4, 0, 0, "", 50, 2000, 8421),
-		def("ch2", "distance_time", "Golden Hour 10K", "Log your fastest 10 km before 07:00. Run it anywhere.", nil, nil, nil, nil, "", "", 10, 3600, 0, "", 0, 750, 5602),
-		def("ch3", "elevation", "Entoto Ascent 3000", "Climb 3,000 vertical metres. Every hill counts.", nil, nil, nil, nil, "", "", 0, 0, 3000, "", 0, 1500, 3180),
-		def("ch4", "streak", "7-Day Sunrise Streak", "Run at least 3 km before sunrise, seven days in a row.", nil, nil, nil, nil, "", "", 3, 0, 0, "", 0, 1000, 4210),
-		def("ch5", "weekly", "Meskerem 100", "Cover 100 km during the Ethiopian New Year month.", nil, nil, nil, nil, "", "", 100, 0, 0, "", 0, 2000, 8421),
-		def("ch6", "segment_sprint", "Unity Park 400 Crown", "Take the crown on the Unity Park 400 segment.", f(9.0130), f(38.7540), f(9.0160), f(38.7570), "Unity Park", "Unity Park Straight", 0.4, 0, 0, "s6", 50, 500, 6402),
-		def("ch7", "relay", "Addis to Lalibela Relay", "A community relay across 780 km of highland road.", nil, nil, nil, nil, "", "", 780, 0, 0, "", 0, 5000, 12640),
 	}
 }
