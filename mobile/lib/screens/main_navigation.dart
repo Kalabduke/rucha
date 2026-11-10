@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import 'explore_screen.dart';
 import 'record_screen.dart';
+import 'activities_screen.dart';
+import 'gallery_screen.dart';
 import 'segments_screen.dart';
 import 'community_screen.dart';
 import 'challenges_screen.dart';
@@ -24,6 +26,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       DashboardScreen(onStartRecording: () => setState(() => _currentIndex = 2)),
       const ExploreScreen(),
       const RecordScreen(),
+      ActivitiesScreen(onStartRecording: () => setState(() => _currentIndex = 2)),
+      const GalleryScreen(),
       const SegmentsScreen(),
       const CommunityScreen(),
       const ChallengesScreen(),
@@ -39,33 +43,43 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 10,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.house_fill, size: 20),
-            label: 'Dashboard',
+            icon: Icon(CupertinoIcons.house_fill, size: 19),
+            label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.compass, size: 20),
+            icon: Icon(CupertinoIcons.compass, size: 19),
             label: 'Explore',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.radio_button_checked, size: 22),
+            icon: Icon(Icons.radio_button_checked, size: 21),
             label: 'Record',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.terrain, size: 20),
+            icon: Icon(CupertinoIcons.list_bullet, size: 19),
+            label: 'Log',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.photo_on_rectangle, size: 19),
+            label: 'Gallery',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.terrain, size: 19),
             label: 'Segments',
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.person_3_fill, size: 20),
-            label: 'Community',
+            icon: Icon(CupertinoIcons.person_3_fill, size: 19),
+            label: 'Clubs',
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.flag_fill, size: 20),
-            label: 'Challenges',
+            icon: Icon(CupertinoIcons.flag_fill, size: 19),
+            label: 'Prizes',
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.person_fill, size: 20),
+            icon: Icon(CupertinoIcons.person_fill, size: 19),
             label: 'Profile',
           ),
         ],
