@@ -6,8 +6,8 @@ import '../services/api_service.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../widgets/metric_card.dart';
-import '../widgets/route_painter.dart';
 import '../widgets/split_table.dart';
+import '../widgets/osm_map_widget.dart';
 import 'run_card_screen.dart';
 
 class RecordScreen extends StatefulWidget {
@@ -114,44 +114,27 @@ class _RecordScreenState extends State<RecordScreen> {
                 const SizedBox(height: 12),
               ],
 
-              // Live Map / Route View
+              // Live OpenStreetMap Embedded View
               Container(
-                height: 220,
+                height: 250,
                 decoration: BoxDecoration(
                   color: RuchaTheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: RuchaTheme.border),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Stack(
-                    children: [
-                      // Procedural Grid background
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: RoutePainter(
-                            points: tracking.track,
-                            routeColor: tracking.activityType == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 12,
-                        left: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: RuchaTheme.background.withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            tracking.track.isEmpty ? 'Waiting for route…' : '${tracking.track.length} points logged',
-                            style: const TextStyle(fontSize: 10, color: RuchaTheme.textSecondary, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                child: OsmMapWidget(
+                  centerLat: tracking.track.isNotEmpty
+                      ? tracking.track.last.lat
+                      : (RuchaConstants.cities[tracking.selectedCity] ?? RuchaConstants.cities['addis']!).lat,
+                  centerLng: tracking.track.isNotEmpty
+                      ? tracking.track.last.lng
+                      : (RuchaConstants.cities[tracking.selectedCity] ?? RuchaConstants.cities['addis']!).lng,
+                  initialZoom: 15,
+                  track: tracking.track,
+                  currentPosition: tracking.track.isNotEmpty ? tracking.track.last : null,
+                  routeColor: tracking.activityType == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
+                  isInteractive: true,
+                  isDarkMode: true,
                 ),
               ),
 

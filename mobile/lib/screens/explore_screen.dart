@@ -5,7 +5,7 @@ import '../core/constants.dart';
 import '../core/theme.dart';
 import '../services/tracking_service.dart';
 import '../models/activity.dart';
-import '../widgets/route_painter.dart';
+import '../widgets/osm_map_widget.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -78,43 +78,22 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Interactive Map Canvas Card
+            // Embedded OpenStreetMap View
             Container(
-              height: 240,
+              height: 250,
               decoration: BoxDecoration(
                 color: RuchaTheme.surface,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: RuchaTheme.border),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: CustomPaint(
-                        painter: RoutePainter(
-                          points: filtered.isNotEmpty ? filtered.first.track : [],
-                          routeColor: RuchaTheme.accentGreen,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: RuchaTheme.background.withOpacity(0.85),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${filtered.length} routes in ${city.name}',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              child: OsmMapWidget(
+                centerLat: city.lat,
+                centerLng: city.lng,
+                initialZoom: 14,
+                track: filtered.isNotEmpty ? filtered.first.track : const [],
+                routeColor: RuchaTheme.accentGreen,
+                isInteractive: true,
+                isDarkMode: true,
               ),
             ),
 
