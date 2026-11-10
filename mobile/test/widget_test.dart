@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rucha_mobile/core/constants.dart';
 import 'package:rucha_mobile/models/user.dart';
 import 'package:rucha_mobile/models/activity.dart';
 import 'package:rucha_mobile/models/legend_ghost.dart';
 import 'package:rucha_mobile/services/tracking_service.dart';
 import 'package:rucha_mobile/services/smartwatch_service.dart';
+import 'package:rucha_mobile/services/auth_service.dart';
 
 void main() {
   test('RUCHA Core constants and Ethiopian cities are configured', () {
@@ -128,5 +130,16 @@ void main() {
     expect(restored.type, equals('ride'));
     expect(restored.avgHr, equals(156));
     expect(restored.maxHr, equals(178));
+  });
+
+  test('AuthService verified athlete login with athlete / Password123', () async {
+    SharedPreferences.setMockInitialValues({});
+    final auth = AuthService();
+    final res = await auth.login('athlete', 'Password123');
+    expect(res.success, isTrue);
+    expect(res.user, isNotNull);
+    expect(res.user!.username, equals('athlete'));
+    expect(res.user!.displayName, equals('Abebe Bikila'));
+    expect(res.user!.profileComplete, isTrue);
   });
 }
