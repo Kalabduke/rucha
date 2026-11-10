@@ -68,7 +68,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _onUsernameChanged() {
-    if (_isLogin) return;
+    if (_isLogin && _currentStep != AuthViewStep.completeProfile) return;
     _debounceTimer?.cancel();
     final text = _usernameController.text.trim();
     if (text.isEmpty) {
@@ -83,7 +83,7 @@ class _AuthScreenState extends State<AuthScreen> {
       _usernameReason = 'Checking…';
     });
 
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () async {
+    _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
       final auth = Provider.of<AuthService>(context, listen: false);
       final res = await auth.checkUsername(text);
       if (!mounted) return;
@@ -106,16 +106,6 @@ class _AuthScreenState extends State<AuthScreen> {
     });
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
-      final config = auth.config;
-
-      if (!config.telegram || config.telegramBot.isEmpty) {
-        setState(() {
-          _isBusy = false;
-          _errorMessage = 'Telegram sign-in is not configured on the RUCHA server yet. Set TELEGRAM_BOT_TOKEN in the backend .env file, or use Username & Password.';
-        });
-        return;
-      }
-
       final res = await auth.telegramStart();
       if (!mounted) return;
       setState(() {
@@ -126,7 +116,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _currentStep = AuthViewStep.telegramCode;
       });
 
-      // Try launching Telegram app or web deep link
+      // Launch Telegram app or deep link
       if (res.link.isNotEmpty) {
         final uri = Uri.parse(res.link);
         if (await canLaunchUrl(uri)) {
@@ -160,13 +150,17 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _isBusy = false);
 
     if (res.success && res.user != null) {
+      // If user profile is not complete, take them to the onboarding screen
       if (!res.user!.profileComplete) {
         setState(() {
           _currentStep = AuthViewStep.completeProfile;
-          _displayNameController.text = res.user!.displayName;
-          _usernameController.text = res.user!.username;
+          _displayNameController.text = res.user!.displayName == 'New Athlete' ? '' : res.user!.displayName;
+          _usernameController.text = '';
+          _passwordController.text = '';
+          _phoneController.text = res.user!.phoneNumber;
         });
       } else {
+        // Already an existing verified user with complete profile
         Navigator.of(context).pop(true);
       }
     } else {
@@ -174,68 +168,66 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _handleGoogleSignIn() async {
-    setState(() {
-      _isBusy = true;
-      _errorMessage = '';
-    });
-    final auth = Provider.of<AuthService>(context, listen: false);
-    final config = auth.config;
-
-    if (!config.google || config.googleId.isEmpty) {
-      setState(() {
-        _isBusy = false;
-        _errorMessage = 'Google sign-in is not configured on the RUCHA server yet. Use Username & Password to create your account.';
-      });
-      return;
-    }
-
-    // TODO: Replace with google_sign_in package for production OAuth flow
-    // For now, show that it requires proper setup
-    setState(() {
-      _isBusy = false;
-      _errorMessage = 'Google sign-in requires the google_sign_in Flutter package with your OAuth Client ID. Use Username & Password for now.';
-    });
-  }
-
-  Future<void> _handleAppleSignIn() async {
-    setState(() {
-      _isBusy = true;
-      _errorMessage = '';
-    });
-    final auth = Provider.of<AuthService>(context, listen: false);
-    final config = auth.config;
-
-    if (!config.apple || config.appleClientId.isEmpty) {
-      setState(() {
-        _isBusy = false;
-        _errorMessage = 'Apple sign-in is not configured on the RUCHA server yet. Use Username & Password to create your account.';
-      });
-      return;
-    }
-
-    // TODO: Replace with sign_in_with_apple package for production flow
-    setState(() {
-      _isBusy = false;
-      _errorMessage = 'Apple sign-in requires the sign_in_with_apple Flutter package and an Apple Developer account. Use Username & Password for now.';
-    });
-  }
-
-  Future<void> _handleSubmitForm() async {
+  // Handle Username & Password Login for returning users
+  Future<void> _handleUsernameLogin() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
-    final displayName = _displayNameController.text.trim();
 
     if (username.isEmpty) {
-      setState(() => _errorMessage = 'Please enter a username.');
+      setState(() => _errorMessage = 'Please enter your username.');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your password.');
+      return;
+    }
+
+    setState(() {
+      _isBusy = true;
+      _errorMessage = '';
+    });
+
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final res = await auth.login(username, password);
+
+    if (!mounted) return;
+    setState(() => _isBusy = false);
+
+    if (res.success) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _errorMessage = res.error ?? 'Wrong username or password.');
+    }
+  }
+
+  // Handle Complete Profile ("when they get inside ask them to set a name username and password")
+  Future<void> _handleCompleteProfile() async {
+    final displayName = _displayNameController.text.trim();
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    final phone = _phoneController.text.trim();
+
+    if (displayName.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your athlete full name.');
+      return;
+    }
+    if (username.isEmpty) {
+      setState(() => _errorMessage = 'Please choose a unique @username.');
+      return;
+    }
+    if (username.length < 3 || username.length > 20) {
+      setState(() => _errorMessage = 'Username must be between 3 and 20 characters.');
+      return;
+    }
+    if (_usernameStatus == 'taken') {
+      setState(() => _errorMessage = 'This username is already taken. Choose another.');
       return;
     }
     if (password.length < 5) {
       setState(() => _errorMessage = 'Password must be at least 5 characters.');
       return;
     }
-
-    if (!_isLogin && (!_acceptPrivacy || !_acceptTerms)) {
+    if (!_acceptPrivacy || !_acceptTerms) {
       setState(() => _errorMessage = 'Please accept the Privacy Policy and Terms of Use.');
       return;
     }
@@ -246,53 +238,6 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     final auth = Provider.of<AuthService>(context, listen: false);
-    final phone = _phoneController.text.trim();
-    final res = _isLogin
-        ? await auth.login(username, password)
-        : await auth.register(
-            username,
-            password,
-            displayName,
-            phoneNumber: phone,
-            acceptPrivacy: _acceptPrivacy,
-            acceptTerms: _acceptTerms,
-          );
-
-    if (!mounted) return;
-    setState(() => _isBusy = false);
-
-    if (res.success) {
-      Navigator.of(context).pop(true);
-    } else {
-      setState(() => _errorMessage = res.error ?? 'Authentication failed.');
-    }
-  }
-
-  Future<void> _handleCompleteProfile() async {
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text;
-    final displayName = _displayNameController.text.trim();
-
-    if (username.isEmpty) {
-      setState(() => _errorMessage = 'Please choose a permanent username.');
-      return;
-    }
-    if (password.length < 5) {
-      setState(() => _errorMessage = 'Please choose a password of at least 5 characters.');
-      return;
-    }
-    if (!_acceptPrivacy || !_acceptTerms) {
-      setState(() => _errorMessage = 'Please accept the Privacy Policy and Terms of Use to finish.');
-      return;
-    }
-
-    setState(() {
-      _isBusy = true;
-      _errorMessage = '';
-    });
-
-    final auth = Provider.of<AuthService>(context, listen: false);
-    final phone = _phoneController.text.trim();
     final res = await auth.completeProfile(
       username,
       password,
@@ -323,12 +268,29 @@ class _AuthScreenState extends State<AuthScreen> {
           icon: const Icon(CupertinoIcons.xmark, color: RuchaTheme.textSecondary),
           onPressed: () => Navigator.of(context).pop(false),
         ),
-        title: const Text('RUCHA · ሩጫ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: RuchaTheme.accentGreen,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(CupertinoIcons.flame_fill, size: 14, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'RUCHA · ሩጫ',
+              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.0, fontSize: 16),
+            ),
+          ],
+        ),
         centerTitle: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -381,7 +343,7 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Mode Selector (Sign In vs Create Account)
+        // Mode Selector: [ Create Account (Telegram) ] vs [ Sign In (Username/Password) ]
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -443,109 +405,222 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
 
+        const SizedBox(height: 22),
+
+        // If 'Create Account': TELEGRAM ONLY FLOW
+        if (!_isLogin)
+          _buildTelegramOnlyCreateAccountView()
+        // If 'Sign In': USERNAME & PASSWORD LOGIN FLOW
+        else
+          _buildUsernameSignInView(),
+      ],
+    );
+  }
+
+  /// 1. CREATE ACCOUNT: TELEGRAM ONLY
+  Widget _buildTelegramOnlyCreateAccountView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: RuchaTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: RuchaTheme.border),
+            gradient: LinearGradient(
+              colors: [
+                RuchaTheme.surface,
+                const Color(0xFF2AABEE).withOpacity(0.07),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2AABEE),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(CupertinoIcons.paperplane_fill, size: 22, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Telegram Fast Sign-Up',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                        Text(
+                          'የቴሌግራም ፈጣን ምዝገባ',
+                          style: TextStyle(fontSize: 11, color: RuchaTheme.textSecondary, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Create your RUCHA athlete account securely via Telegram. Once inside, you will set your permanent name, @username, and password.',
+                style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.45),
+              ),
+              const SizedBox(height: 18),
+              _buildFeatureCheck('Instant bot verification — no email or spam'),
+              const SizedBox(height: 8),
+              _buildFeatureCheck('Set your unique @username inside for friends to find you'),
+              const SizedBox(height: 8),
+              _buildFeatureCheck('Log in anytime afterwards with your username and password'),
+            ],
+          ),
+        ),
+
         const SizedBox(height: 24),
 
-        // Social Sign In Section
-        // 1. Telegram Button (Recommended)
+        // Primary Telegram Sign-Up Button
         ElevatedButton(
           onPressed: _isBusy ? null : _handleTelegramStart,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2AABEE),
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
+            elevation: 2,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(CupertinoIcons.paperplane_fill, size: 20),
-              const SizedBox(width: 10),
-              const Text(
-                'Continue with Telegram',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.25),
-                  borderRadius: BorderRadius.circular(6),
+          child: _isBusy
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(CupertinoIcons.paperplane_fill, size: 20),
+                    SizedBox(width: 10),
+                    Text(
+                      'Create Account with Telegram',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                  ],
                 ),
-                child: const Text(
-                  'Recommended',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.3),
-                ),
-              ),
-            ],
+        ),
+
+        const SizedBox(height: 20),
+
+        Center(
+          child: TextButton(
+            onPressed: () => setState(() => _isLogin = true),
+            child: const Text(
+              'Already registered? Sign in with your username →',
+              style: TextStyle(color: RuchaTheme.accentGreen, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 2. SIGN IN: USERNAME & PASSWORD LOGIN
+  Widget _buildUsernameSignInView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Username',
+          style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _usernameController,
+          autocorrect: false,
+          enableSuggestions: false,
+          textCapitalization: TextCapitalization.none,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(CupertinoIcons.at, size: 18, color: RuchaTheme.textSecondary),
+            hintText: 'Enter your username',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+            filled: true,
+            fillColor: RuchaTheme.surface,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.accentGreen)),
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
 
-        // 2. Google & Apple Row
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _isBusy ? null : _handleGoogleSignIn,
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: RuchaTheme.surface,
-                  side: const BorderSide(color: RuchaTheme.border),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(CupertinoIcons.globe, size: 18, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text(
-                      'Google',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                  ],
-                ),
+        const Text(
+          'Password',
+          style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(CupertinoIcons.lock, size: 18, color: RuchaTheme.textSecondary),
+            hintText: 'Enter your password',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+            filled: true,
+            fillColor: RuchaTheme.surface,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.accentGreen)),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
+                color: RuchaTheme.textSecondary,
+                size: 20,
               ),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _isBusy ? null : _handleAppleSignIn,
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: RuchaTheme.surface,
-                  side: const BorderSide(color: RuchaTheme.border),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.apple, size: 20, color: Colors.white),
-                    SizedBox(width: 6),
-                    Text(
-                      'Apple ID',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
 
         const SizedBox(height: 24),
 
-        // Divider
+        ElevatedButton(
+          onPressed: _isBusy ? null : _handleUsernameLogin,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: RuchaTheme.accentGreen,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          child: _isBusy
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(CupertinoIcons.arrow_right_circle_fill, size: 20),
+                    SizedBox(width: 8),
+                    Text('Sign In to RUCHA', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Alternative: Sign in with Telegram
         Row(
           children: [
             const Expanded(child: Divider(color: RuchaTheme.border)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Text(
-                _isLogin ? 'OR WITH USERNAME' : 'OR CREATE WITH USERNAME',
-                style: const TextStyle(
-                  color: RuchaTheme.textSecondary,
+                'OR SIGN IN WITH TELEGRAM',
+                style: TextStyle(
+                  color: RuchaTheme.textSecondary.withOpacity(0.8),
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
@@ -556,80 +631,230 @@ class _AuthScreenState extends State<AuthScreen> {
           ],
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
 
-        // Display Name (only in Sign Up)
-        if (!_isLogin) ...[
-          const Text('Display Name', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _displayNameController,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
-            decoration: InputDecoration(
-              hintText: 'e.g. Derartu Tulu',
-              hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-              filled: true,
-              fillColor: RuchaTheme.surface,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-            ),
+        OutlinedButton.icon(
+          onPressed: _isBusy ? null : _handleTelegramStart,
+          icon: const Icon(CupertinoIcons.paperplane_fill, size: 18, color: Color(0xFF2AABEE)),
+          label: const Text(
+            'Sign In with Telegram Bot',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
           ),
-          const SizedBox(height: 14),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: RuchaTheme.surface,
+            side: const BorderSide(color: RuchaTheme.border),
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ],
+    );
+  }
 
-          // Phone Number input
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  /// 3. TELEGRAM 6-DIGIT CODE STEP
+  Widget _buildTelegramCodeView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() {
+              _currentStep = AuthViewStep.form;
+              _errorMessage = '';
+            }),
+            icon: const Icon(CupertinoIcons.arrow_left, size: 16, color: RuchaTheme.accentGreen),
+            label: const Text('Back', style: TextStyle(color: RuchaTheme.accentGreen, fontWeight: FontWeight.w600)),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: RuchaTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: RuchaTheme.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Phone Number', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-              Text('Ethio Telecom / Safaricom', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
-            decoration: InputDecoration(
-              prefixIcon: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('🇪🇹', style: TextStyle(fontSize: 16)),
-                    SizedBox(width: 6),
-                    Text('+251', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                    SizedBox(width: 8),
-                    Text('|', style: TextStyle(color: RuchaTheme.border)),
-                  ],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2AABEE).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'TELEGRAM VERIFICATION',
+                  style: TextStyle(color: Color(0xFF2AABEE), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
                 ),
               ),
-              hintText: '09... or 07...',
-              hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-              filled: true,
-              fillColor: RuchaTheme.surface,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+              const SizedBox(height: 12),
+              const Text('Check Telegram Bot', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+              const SizedBox(height: 6),
+              const Text(
+                'Open the RUCHA bot on Telegram and tap Start to get your 6-digit code.',
+                style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+
+              if (_tgLink.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final uri = Uri.parse(_tgLink);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
+                  label: Text('Open @${_tgBotName.isNotEmpty ? _tgBotName : "rucha_bot"} in Telegram'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2AABEE),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        const Text(
+          'ENTER 6-DIGIT CODE',
+          style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.8),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _tgCodeController,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 10,
+          ),
+          decoration: InputDecoration(
+            counterText: '',
+            hintText: '······',
+            hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 10),
+            filled: true,
+            fillColor: RuchaTheme.surface,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: RuchaTheme.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2AABEE))),
+          ),
+        ),
+
+        const SizedBox(height: 18),
+
+        ElevatedButton(
+          onPressed: _isBusy ? null : _handleTelegramVerify,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: RuchaTheme.accentGreen,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: _isBusy
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Verify & Continue', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ),
+
+        const SizedBox(height: 14),
+        Center(
+          child: Text(
+            'Tip: Use code 123456 for offline test verification',
+            style: TextStyle(color: RuchaTheme.textSecondary.withOpacity(0.6), fontSize: 11),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 4. ONBOARDING: COMPLETE PROFILE (SET NAME, USERNAME, PASSWORD)
+  Widget _buildCompleteProfileView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: RuchaTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: RuchaTheme.border),
+            gradient: LinearGradient(
+              colors: [
+                RuchaTheme.surface,
+                RuchaTheme.accentGreen.withOpacity(0.08),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
           ),
-          const SizedBox(height: 14),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: RuchaTheme.accentGreen.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'STEP 2: ATHLETE PROFILE',
+                  style: TextStyle(color: RuchaTheme.accentGreen, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text('Set Up Your Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+              const SizedBox(height: 6),
+              const Text(
+                'Set your name, username, and password. Friends will search and challenge you with your username, and you will use it to log in afterwards.',
+                style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.4),
+              ),
+            ],
+          ),
+        ),
 
-        // Username Field
+        const SizedBox(height: 20),
+
+        // 1. Full Display Name
+        const Text('Athlete Name', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _displayNameController,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: 'e.g. Kenenisa Bekele',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+            filled: true,
+            fillColor: RuchaTheme.surface,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // 2. Unique Username
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Username', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-            if (!_isLogin && _usernameStatus.isNotEmpty)
+            const Text('Unique Username (@username)', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+            if (_usernameStatus.isNotEmpty)
               Text(
                 _usernameReason,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: _usernameStatus == 'available'
-                      ? RuchaTheme.accentGreen
-                      : (_usernameStatus == 'checking' ? RuchaTheme.accentGold : RuchaTheme.accentRed),
+                  color: _usernameStatus == 'available' ? RuchaTheme.accentGreen : RuchaTheme.accentRed,
                 ),
               ),
           ],
@@ -642,7 +867,43 @@ class _AuthScreenState extends State<AuthScreen> {
           textCapitalization: TextCapitalization.none,
           style: const TextStyle(color: Colors.white, fontSize: 15),
           decoration: InputDecoration(
+            prefixIcon: const Icon(CupertinoIcons.at, size: 18, color: RuchaTheme.textSecondary),
             hintText: 'letters, numbers and _ (3-20)',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+            helperText: 'Friends will search for you using this username',
+            helperStyle: TextStyle(color: RuchaTheme.accentGold.withOpacity(0.9), fontSize: 11),
+            filled: true,
+            fillColor: RuchaTheme.surface,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // 3. Ethiopian Phone Number
+        const Text('Phone Number', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            prefixIcon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('🇪🇹', style: TextStyle(fontSize: 16)),
+                  SizedBox(width: 6),
+                  Text('+251', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                  SizedBox(width: 8),
+                  Text('|', style: TextStyle(color: RuchaTheme.border)),
+                ],
+              ),
+            ),
+            hintText: '09... or 07...',
             hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
             filled: true,
             fillColor: RuchaTheme.surface,
@@ -654,86 +915,71 @@ class _AuthScreenState extends State<AuthScreen> {
 
         const SizedBox(height: 14),
 
-        // Password Field
-        const Text('Password', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        // 4. Password
+        const Text('Set Password (for future logins)', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextField(
           controller: _passwordController,
           obscureText: _obscurePassword,
           style: const TextStyle(color: Colors.white, fontSize: 15),
           decoration: InputDecoration(
+            prefixIcon: const Icon(CupertinoIcons.lock, size: 18, color: RuchaTheme.textSecondary),
             hintText: 'at least 5 characters',
             hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+            helperText: 'Use this username and password to log in directly afterwards',
+            helperStyle: TextStyle(color: RuchaTheme.textSecondary.withOpacity(0.8), fontSize: 11),
             filled: true,
             fillColor: RuchaTheme.surface,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
             suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
-                color: RuchaTheme.textSecondary,
-                size: 20,
-              ),
+              icon: Icon(_obscurePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash, color: RuchaTheme.textSecondary, size: 20),
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
         ),
 
-        // Consent Checkboxes (Sign Up Only)
-        if (!_isLogin) ...[
-          const SizedBox(height: 18),
-          _buildConsentCheckbox(
-            value: _acceptPrivacy,
-            onChanged: (v) => setState(() => _acceptPrivacy = v ?? false),
-            label: 'I accept the Privacy Policy (v2026-11-07)',
-          ),
-          const SizedBox(height: 8),
-          _buildConsentCheckbox(
-            value: _acceptTerms,
-            onChanged: (v) => setState(() => _acceptTerms = v ?? false),
-            label: 'I accept the Terms of Use (v2026-11-07)',
-          ),
-        ],
+        const SizedBox(height: 18),
+
+        // Consents
+        _buildConsentCheckbox(
+          value: _acceptPrivacy,
+          onChanged: (v) => setState(() => _acceptPrivacy = v ?? false),
+          label: 'I accept the Privacy Policy (v2026-11-07)',
+        ),
+        const SizedBox(height: 8),
+        _buildConsentCheckbox(
+          value: _acceptTerms,
+          onChanged: (v) => setState(() => _acceptTerms = v ?? false),
+          label: 'I accept the Terms of Use (v2026-11-07)',
+        ),
 
         const SizedBox(height: 24),
 
-        // Submit Button
         ElevatedButton(
-          onPressed: _isBusy ? null : _handleSubmitForm,
+          onPressed: _isBusy ? null : _handleCompleteProfile,
           style: ElevatedButton.styleFrom(
             backgroundColor: RuchaTheme.accentGreen,
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 15),
+            padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
           ),
           child: _isBusy
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(_isLogin ? CupertinoIcons.arrow_right_circle_fill : CupertinoIcons.checkmark_alt_circle_fill, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isLogin ? 'Sign in to RUCHA' : 'Create Account',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Complete Account & Start Running', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         ),
+      ],
+    );
+  }
 
-        const SizedBox(height: 16),
-        Center(
-          child: Text(
-            'GPS data is recorded locally on your device.\nNo email required.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: RuchaTheme.textSecondary.withOpacity(0.7), fontSize: 12),
-          ),
+  Widget _buildFeatureCheck(String text) {
+    return Row(
+      children: [
+        const Icon(CupertinoIcons.checkmark_alt_circle_fill, size: 16, color: RuchaTheme.accentGreen),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
         ),
       ],
     );
@@ -766,344 +1012,6 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTelegramCodeView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Back Button
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => setState(() {
-              _currentStep = AuthViewStep.form;
-              _errorMessage = '';
-            }),
-            icon: const Icon(CupertinoIcons.arrow_left, size: 16, color: RuchaTheme.accentGreen),
-            label: const Text('Back', style: TextStyle(color: RuchaTheme.accentGreen, fontWeight: FontWeight.w600)),
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        // Card Head
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: RuchaTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: RuchaTheme.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2AABEE).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'TELEGRAM SIGN-IN',
-                  style: TextStyle(
-                    color: Color(0xFF2AABEE),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text('Check Telegram', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-              const SizedBox(height: 6),
-              const Text(
-                'The code is sent securely in your Telegram chat, so RUCHA never needs your phone number or email.',
-                style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.4),
-              ),
-              const SizedBox(height: 18),
-
-              // Steps
-              _buildTelegramStepItem('1', 'Open the RUCHA bot in Telegram and press Start.'),
-              const SizedBox(height: 10),
-              _buildTelegramStepItem('2', 'The bot will send you a 6-digit verification code.'),
-              const SizedBox(height: 10),
-              _buildTelegramStepItem('3', 'Type that 6-digit code in the field below.'),
-
-              const SizedBox(height: 20),
-
-              // Open Bot Link Button
-              if (_tgLink.isNotEmpty)
-                ElevatedButton(
-                  onPressed: () async {
-                    final uri = Uri.parse(_tgLink);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2AABEE),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(CupertinoIcons.paperplane_fill, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Open @${_tgBotName.isNotEmpty ? _tgBotName : "bot"}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // Code Input Field
-        const Text(
-          '6-DIGIT VERIFICATION CODE',
-          style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.8),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _tgCodeController,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 10,
-          ),
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: '······',
-            hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 10),
-            filled: true,
-            fillColor: RuchaTheme.surface,
-            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: RuchaTheme.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2AABEE))),
-          ),
-        ),
-
-        const SizedBox(height: 18),
-
-        // Verify Button
-        ElevatedButton(
-          onPressed: _isBusy ? null : _handleTelegramVerify,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: RuchaTheme.accentGreen,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          child: _isBusy
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Verify Code', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTelegramStepItem(String number, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 22,
-          height: 22,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: RuchaTheme.border,
-            shape: BoxShape.circle,
-          ),
-          child: Text(number, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.35)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCompleteProfileView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: RuchaTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: RuchaTheme.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: RuchaTheme.accentGreen.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'WELCOME ATHLETE',
-                  style: TextStyle(color: RuchaTheme.accentGreen, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text('Complete Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-              const SizedBox(height: 6),
-              const Text(
-                'Choose your permanent RUCHA username and password. Your activities and trophies will be tied to this username.',
-                style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.4),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // Display Name
-        const Text('Display Name', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _displayNameController,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: RuchaTheme.surface,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-          ),
-        ),
-
-        const SizedBox(height: 14),
-
-        // Phone Number
-        const Text('Phone Number', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
-          decoration: InputDecoration(
-            prefixIcon: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('🇪🇹', style: TextStyle(fontSize: 16)),
-                  SizedBox(width: 6),
-                  Text('+251', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                  SizedBox(width: 8),
-                  Text('|', style: TextStyle(color: RuchaTheme.border)),
-                ],
-              ),
-            ),
-            hintText: '09... or 07...',
-            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-            filled: true,
-            fillColor: RuchaTheme.surface,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-          ),
-        ),
-
-        const SizedBox(height: 14),
-
-        // Permanent Username
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Unique Username', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-            if (_usernameStatus.isNotEmpty)
-              Text(
-                _usernameReason,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: _usernameStatus == 'available' ? RuchaTheme.accentGreen : RuchaTheme.accentRed,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _usernameController,
-          autocorrect: false,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: RuchaTheme.surface,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-          ),
-        ),
-
-        const SizedBox(height: 14),
-
-        // Password
-        const Text('Password', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _passwordController,
-          obscureText: _obscurePassword,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
-          decoration: InputDecoration(
-            hintText: 'at least 5 characters',
-            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-            filled: true,
-            fillColor: RuchaTheme.surface,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
-            suffixIcon: IconButton(
-              icon: Icon(_obscurePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash, color: RuchaTheme.textSecondary, size: 20),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 18),
-
-        // Consents
-        _buildConsentCheckbox(
-          value: _acceptPrivacy,
-          onChanged: (v) => setState(() => _acceptPrivacy = v ?? false),
-          label: 'I accept the Privacy Policy (v2026-11-07)',
-        ),
-        const SizedBox(height: 8),
-        _buildConsentCheckbox(
-          value: _acceptTerms,
-          onChanged: (v) => setState(() => _acceptTerms = v ?? false),
-          label: 'I accept the Terms of Use (v2026-11-07)',
-        ),
-
-        const SizedBox(height: 24),
-
-        ElevatedButton(
-          onPressed: _isBusy ? null : _handleCompleteProfile,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: RuchaTheme.accentGreen,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          child: _isBusy
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Finish Creating Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        ),
-      ],
     );
   }
 }

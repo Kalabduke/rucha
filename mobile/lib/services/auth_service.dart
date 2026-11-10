@@ -191,8 +191,13 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       notifyListeners();
-      // If server is offline, return fallback for demo/testing
-      if (e.toString().contains('unavailable') || e.toString().contains('Failed host lookup') || e.toString().contains('Connection refused')) {
+      // If server is offline or bot not configured yet, return fallback for demo/testing
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('unavailable') ||
+          errStr.contains('failed host lookup') ||
+          errStr.contains('connection refused') ||
+          errStr.contains('503') ||
+          errStr.contains('not set up')) {
         return const TelegramStartResult(
           loginId: 'local_demo_tg',
           bot: 'rucha_bot',
@@ -232,9 +237,11 @@ class AuthService extends ChangeNotifier {
       // Offline fallback for testing
       if (code == '123456') {
         final localUser = User(
-          id: 'tg_local_runner',
-          username: 'ethio_runner',
-          displayName: 'Ethiopian Runner',
+          id: 'tg_local_${DateTime.now().millisecondsSinceEpoch}',
+          username: 'pending_athlete',
+          displayName: 'New Athlete',
+          profileComplete: false, // Forces user into the Complete Profile screen!
+          hasPassword: false,
           providers: const ['telegram'],
           createdAt: DateTime.now().toIso8601String(),
         );
@@ -491,6 +498,44 @@ class AuthService extends ChangeNotifier {
       }
     } catch (_) {}
     return {'available': true, 'reason': ''};
+  }
+
+  // Search athletes by unique username for friends
+  Future<List<User>> searchUsers(String query) async {
+    final clean = query.trim().toLowerCase();
+    if (clean.isEmpty) return [];
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/auth/users?q=${Uri.encodeComponent(clean)}'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (_sessionToken != null) 'Authorization': 'Bearer $_sessionToken',
+        },
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body);
+        return data.map((x) => User.fromJson(x as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  // Send friend request to an athlete by username
+  Future<bool> sendFriendRequest(String username) async {
+    if (_sessionToken == null) return false;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/auth/friends'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_sessionToken',
+        },
+        body: jsonEncode({'username': username.trim().toLowerCase()}),
+      ).timeout(const Duration(seconds: 5));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> logout() async {
