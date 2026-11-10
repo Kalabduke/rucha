@@ -35,6 +35,16 @@ class _RunCardScreenState extends State<RunCardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(2.5),
+          child: Row(
+            children: [
+              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+            ],
+          ),
+        ),
         title: Text(_isRide ? 'Ride Card Studio' : 'Run Card Studio'),
         actions: [
           IconButton(

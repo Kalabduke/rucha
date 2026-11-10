@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/tracking_service.dart';
 import '../models/activity.dart';
 import '../widgets/metric_card.dart';
+import '../widgets/rucha_logo.dart';
 import 'run_card_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -58,18 +59,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(2.5),
+          child: Row(
+            children: [
+              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+            ],
+          ),
+        ),
         title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: RuchaTheme.accentGreen,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(CupertinoIcons.flame_fill, size: 16, color: Colors.white),
-            ),
-            const SizedBox(width: 8),
-            const Text(RuchaConstants.appName),
+          children: const [
+            RuchaLogo(size: 26, showText: false, showFlag: false),
+            SizedBox(width: 8),
+            Text(RuchaConstants.appName),
           ],
         ),
         actions: [

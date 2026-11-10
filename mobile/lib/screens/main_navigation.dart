@@ -465,14 +465,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(9),
-                        decoration: BoxDecoration(
-                          color: RuchaTheme.accentGreen,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(CupertinoIcons.flame_fill, size: 22, color: Colors.white),
-                      ),
+                      const RuchaLogo(size: 38, showText: false, showFlag: false),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
