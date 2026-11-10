@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/tracking_service.dart';
+import 'screens/auth_screen.dart';
 import 'screens/main_navigation.dart';
 
 void main() {
@@ -36,7 +37,15 @@ class RuchaApp extends StatelessWidget {
         title: 'RUCHA - Ethiopian Run & Ride Tracker',
         debugShowCheckedModeBanner: false,
         theme: RuchaTheme.darkTheme,
-        home: const MainNavigationScreen(),
+        // Authentication Gate: Users CANNOT access the app without creating an account and completing their profile!
+        home: Consumer<AuthService>(
+          builder: (context, auth, _) {
+            if (auth.isAuthenticated && (auth.currentUser?.profileComplete ?? false)) {
+              return const MainNavigationScreen();
+            }
+            return const AuthScreen(isGate: true);
+          },
+        ),
       ),
     );
   }

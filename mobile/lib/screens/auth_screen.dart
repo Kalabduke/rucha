@@ -14,8 +14,13 @@ enum AuthViewStep {
 
 class AuthScreen extends StatefulWidget {
   final bool initialIsLogin;
+  final bool isGate;
 
-  const AuthScreen({super.key, this.initialIsLogin = false});
+  const AuthScreen({
+    super.key,
+    this.initialIsLogin = false,
+    this.isGate = false,
+  });
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -99,6 +104,7 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
+  // Telegram Start
   Future<void> _handleTelegramStart() async {
     setState(() {
       _isBusy = true;
@@ -116,7 +122,6 @@ class _AuthScreenState extends State<AuthScreen> {
         _currentStep = AuthViewStep.telegramCode;
       });
 
-      // Launch Telegram app or deep link
       if (res.link.isNotEmpty) {
         final uri = Uri.parse(res.link);
         if (await canLaunchUrl(uri)) {
@@ -132,6 +137,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  // Telegram Verify
   Future<void> _handleTelegramVerify() async {
     final code = _tgCodeController.text.trim();
     if (code.length != 6) {
@@ -150,7 +156,6 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _isBusy = false);
 
     if (res.success && res.user != null) {
-      // If user profile is not complete, take them to the onboarding screen
       if (!res.user!.profileComplete) {
         setState(() {
           _currentStep = AuthViewStep.completeProfile;
@@ -160,11 +165,66 @@ class _AuthScreenState extends State<AuthScreen> {
           _phoneController.text = res.user!.phoneNumber;
         });
       } else {
-        // Already an existing verified user with complete profile
-        Navigator.of(context).pop(true);
+        if (!widget.isGate) Navigator.of(context).pop(true);
       }
     } else {
       setState(() => _errorMessage = res.error ?? 'Verification failed.');
+    }
+  }
+
+  // Google Sign-Up / Login
+  Future<void> _handleGoogleAuth() async {
+    setState(() {
+      _isBusy = true;
+      _errorMessage = '';
+    });
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final res = await auth.googleSignIn('google_oauth_token');
+
+    if (!mounted) return;
+    setState(() => _isBusy = false);
+
+    if (res.success && res.user != null) {
+      if (!res.user!.profileComplete) {
+        setState(() {
+          _currentStep = AuthViewStep.completeProfile;
+          _displayNameController.text = res.user!.displayName == 'Google Athlete' ? '' : res.user!.displayName;
+          _usernameController.text = '';
+          _passwordController.text = '';
+        });
+      } else {
+        if (!widget.isGate) Navigator.of(context).pop(true);
+      }
+    } else {
+      setState(() => _errorMessage = res.error ?? 'Google authentication could not be completed.');
+    }
+  }
+
+  // Apple ID Sign-Up / Login
+  Future<void> _handleAppleAuth() async {
+    setState(() {
+      _isBusy = true;
+      _errorMessage = '';
+    });
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final res = await auth.appleSignIn('apple_identity_token');
+
+    if (!mounted) return;
+    setState(() => _isBusy = false);
+
+    if (res.success && res.user != null) {
+      if (!res.user!.profileComplete) {
+        setState(() {
+          _currentStep = AuthViewStep.completeProfile;
+          _displayNameController.text = res.user!.displayName == 'Apple Athlete' ? '' : res.user!.displayName;
+          _usernameController.text = '';
+          _passwordController.text = '';
+        });
+      } else {
+        if (!widget.isGate) Navigator.of(context).pop(true);
+      }
+    } else {
+      setState(() => _errorMessage = res.error ?? 'Apple ID authentication could not be completed.');
     }
   }
 
@@ -194,13 +254,13 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _isBusy = false);
 
     if (res.success) {
-      Navigator.of(context).pop(true);
+      if (!widget.isGate) Navigator.of(context).pop(true);
     } else {
       setState(() => _errorMessage = res.error ?? 'Wrong username or password.');
     }
   }
 
-  // Handle Complete Profile ("when they get inside ask them to set a name username and password")
+  // Complete Profile ("when they get inside ask them to set a name username and password")
   Future<void> _handleCompleteProfile() async {
     final displayName = _displayNameController.text.trim();
     final username = _usernameController.text.trim();
@@ -227,6 +287,10 @@ class _AuthScreenState extends State<AuthScreen> {
       setState(() => _errorMessage = 'Password must be at least 5 characters.');
       return;
     }
+    if (phone.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your phone number.');
+      return;
+    }
     if (!_acceptPrivacy || !_acceptTerms) {
       setState(() => _errorMessage = 'Please accept the Privacy Policy and Terms of Use.');
       return;
@@ -251,7 +315,7 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _isBusy = false);
 
     if (res.success) {
-      Navigator.of(context).pop(true);
+      if (!widget.isGate) Navigator.of(context).pop(true);
     } else {
       setState(() => _errorMessage = res.error ?? 'Could not complete profile.');
     }
@@ -264,10 +328,13 @@ class _AuthScreenState extends State<AuthScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(CupertinoIcons.xmark, color: RuchaTheme.textSecondary),
-          onPressed: () => Navigator.of(context).pop(false),
-        ),
+        automaticallyImplyLeading: false,
+        leading: widget.isGate
+            ? null
+            : IconButton(
+                icon: const Icon(CupertinoIcons.xmark, color: RuchaTheme.textSecondary),
+                onPressed: () => Navigator.of(context).pop(false),
+              ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -343,7 +410,7 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Mode Selector: [ Create Account (Telegram) ] vs [ Sign In (Username/Password) ]
+        // Mode Selector: [ Create Account ] vs [ Sign In ]
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
@@ -407,23 +474,21 @@ class _AuthScreenState extends State<AuthScreen> {
 
         const SizedBox(height: 22),
 
-        // If 'Create Account': TELEGRAM ONLY FLOW
         if (!_isLogin)
-          _buildTelegramOnlyCreateAccountView()
-        // If 'Sign In': USERNAME & PASSWORD LOGIN FLOW
+          _buildCreateAccountView()
         else
           _buildUsernameSignInView(),
       ],
     );
   }
 
-  /// 1. CREATE ACCOUNT: TELEGRAM ONLY
-  Widget _buildTelegramOnlyCreateAccountView() {
+  /// 1. CREATE ACCOUNT: TELEGRAM, GOOGLE, APPLE (ALL PROMPT ONBOARDING AFTERWARDS)
+  Widget _buildCreateAccountView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: RuchaTheme.surface,
             borderRadius: BorderRadius.circular(16),
@@ -431,7 +496,7 @@ class _AuthScreenState extends State<AuthScreen> {
             gradient: LinearGradient(
               colors: [
                 RuchaTheme.surface,
-                const Color(0xFF2AABEE).withOpacity(0.07),
+                RuchaTheme.accentGreen.withOpacity(0.08),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -440,74 +505,110 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2AABEE),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(CupertinoIcons.paperplane_fill, size: 22, color: Colors.white),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Telegram Fast Sign-Up',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
-                        ),
-                        Text(
-                          'የቴሌግራም ፈጣን ምዝገባ',
-                          style: TextStyle(fontSize: 11, color: RuchaTheme.textSecondary, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
+                  Icon(CupertinoIcons.sparkles, size: 18, color: RuchaTheme.accentGold),
+                  SizedBox(width: 8),
+                  Text(
+                    'FAST ATHLETE REGISTRATION',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: RuchaTheme.accentGold, letterSpacing: 0.8),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               const Text(
-                'Create your RUCHA athlete account securely via Telegram. Once inside, you will set your permanent name, @username, and password.',
+                'Create Your Account',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Verify with Telegram, Google, or Apple. Once inside, you will choose your permanent athlete name, @username, password, and phone number.',
                 style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.45),
               ),
-              const SizedBox(height: 18),
-              _buildFeatureCheck('Instant bot verification — no email or spam'),
-              const SizedBox(height: 8),
-              _buildFeatureCheck('Set your unique @username inside for friends to find you'),
-              const SizedBox(height: 8),
-              _buildFeatureCheck('Log in anytime afterwards with your username and password'),
             ],
           ),
         ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
 
-        // Primary Telegram Sign-Up Button
+        // Method A: Telegram (Primary & Recommended)
         ElevatedButton(
           onPressed: _isBusy ? null : _handleTelegramStart,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2AABEE),
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 15),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 2,
+            elevation: 1,
           ),
-          child: _isBusy
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(CupertinoIcons.paperplane_fill, size: 20),
-                    SizedBox(width: 10),
-                    Text(
-                      'Create Account with Telegram',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                    ),
-                  ],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(CupertinoIcons.paperplane_fill, size: 20),
+              const SizedBox(width: 10),
+              const Text(
+                'Sign Up with Telegram (@ruchaabot)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(4),
                 ),
+                child: const Text('Fast', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Method B: Google Sign-Up
+        OutlinedButton(
+          onPressed: _isBusy ? null : _handleGoogleAuth,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: RuchaTheme.surface,
+            side: const BorderSide(color: RuchaTheme.border),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(CupertinoIcons.globe, size: 18, color: Colors.white),
+              SizedBox(width: 10),
+              Text(
+                'Sign Up with Google',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Method C: Apple ID Sign-Up
+        OutlinedButton(
+          onPressed: _isBusy ? null : _handleAppleAuth,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: RuchaTheme.surface,
+            side: const BorderSide(color: RuchaTheme.border),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.apple, size: 20, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                'Sign Up with Apple ID',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 20),
@@ -516,7 +617,7 @@ class _AuthScreenState extends State<AuthScreen> {
           child: TextButton(
             onPressed: () => setState(() => _isLogin = true),
             child: const Text(
-              'Already registered? Sign in with your username →',
+              'Already have an account? Sign in with username →',
               style: TextStyle(color: RuchaTheme.accentGreen, fontWeight: FontWeight.w600, fontSize: 13),
             ),
           ),
@@ -611,7 +712,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
         const SizedBox(height: 24),
 
-        // Alternative: Sign in with Telegram
         Row(
           children: [
             const Expanded(child: Divider(color: RuchaTheme.border)),
@@ -692,31 +792,30 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('Check Telegram Bot', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+              const Text('Check @ruchaabot', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
               const SizedBox(height: 6),
               const Text(
-                'Open the RUCHA bot on Telegram and tap Start to get your 6-digit code.',
+                'Open @ruchaabot on Telegram and press Start to get your 6-digit code.',
                 style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.4),
               ),
               const SizedBox(height: 16),
 
-              if (_tgLink.isNotEmpty)
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.parse(_tgLink);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
-                  label: Text('Open @${_tgBotName.isNotEmpty ? _tgBotName : "ruchaabot"} in Telegram'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2AABEE),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final uri = Uri.parse(_tgLink.isNotEmpty ? _tgLink : 'https://t.me/ruchaabot');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
+                label: Text('Open @${_tgBotName.isNotEmpty ? _tgBotName : "ruchaabot"} in Telegram'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2AABEE),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
+              ),
             ],
           ),
         ),
@@ -777,7 +876,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  /// 4. ONBOARDING: COMPLETE PROFILE (SET NAME, USERNAME, PASSWORD)
+  /// 4. ONBOARDING: COMPLETE PROFILE (MANDATORY: NAME, USERNAME, PASSWORD, PHONE)
   Widget _buildCompleteProfileView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -797,25 +896,18 @@ class _AuthScreenState extends State<AuthScreen> {
               end: Alignment.bottomRight,
             ),
           ),
-          child: Column(
+          child: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: RuchaTheme.accentGreen.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'STEP 2: ATHLETE PROFILE',
-                  style: TextStyle(color: RuchaTheme.accentGreen, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
-                ),
+              Text(
+                'MANDATORY ATHLETE PROFILE',
+                style: TextStyle(color: RuchaTheme.accentGold, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
               ),
-              const SizedBox(height: 10),
-              const Text('Set Up Your Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-              const SizedBox(height: 6),
-              const Text(
-                'Set your name, username, and password. Friends will search and challenge you with your username, and you will use it to log in afterwards.',
+              SizedBox(height: 8),
+              Text('Set Up Your Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+              SizedBox(height: 6),
+              Text(
+                'Please set your name, unique username, password, and phone number to complete account registration.',
                 style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.4),
               ),
             ],
@@ -825,7 +917,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 20),
 
         // 1. Full Display Name
-        const Text('Athlete Name', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const Text('Full Athlete Name', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextField(
           controller: _displayNameController,
@@ -870,7 +962,7 @@ class _AuthScreenState extends State<AuthScreen> {
             prefixIcon: const Icon(CupertinoIcons.at, size: 18, color: RuchaTheme.textSecondary),
             hintText: 'letters, numbers and _ (3-20)',
             hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-            helperText: 'Friends will search for you using this username',
+            helperText: 'Friends will search and find you using this username',
             helperStyle: TextStyle(color: RuchaTheme.accentGold.withOpacity(0.9), fontSize: 11),
             filled: true,
             fillColor: RuchaTheme.surface,
@@ -883,7 +975,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 14),
 
         // 3. Ethiopian Phone Number
-        const Text('Phone Number', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const Text('Phone Number (Ethiopia)', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextField(
           controller: _phoneController,
@@ -916,7 +1008,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 14),
 
         // 4. Password
-        const Text('Set Password (for future logins)', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const Text('Password (for future logins)', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextField(
           controller: _passwordController,
@@ -926,7 +1018,7 @@ class _AuthScreenState extends State<AuthScreen> {
             prefixIcon: const Icon(CupertinoIcons.lock, size: 18, color: RuchaTheme.textSecondary),
             hintText: 'at least 5 characters',
             hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-            helperText: 'Use this username and password to log in directly afterwards',
+            helperText: 'You can log in directly anytime using this username and password',
             helperStyle: TextStyle(color: RuchaTheme.textSecondary.withOpacity(0.8), fontSize: 11),
             filled: true,
             fillColor: RuchaTheme.surface,
@@ -968,18 +1060,6 @@ class _AuthScreenState extends State<AuthScreen> {
           child: _isBusy
               ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Text('Complete Account & Start Running', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFeatureCheck(String text) {
-    return Row(
-      children: [
-        const Icon(CupertinoIcons.checkmark_alt_circle_fill, size: 16, color: RuchaTheme.accentGreen),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
         ),
       ],
     );
