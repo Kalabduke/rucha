@@ -144,6 +144,12 @@ class MainActivity : FlutterActivity() {
                 "pickImage" -> {
                     pickImage(result)
                 }
+                "openTelegram" -> {
+                    val bot = call.argument<String>("bot") ?: "ruchaabot"
+                    val start = call.argument<String>("start") ?: ""
+                    val ok = openTelegramApp(bot, start)
+                    result.success(ok)
+                }
                 "saveImageToGallery" -> {
                     val filePath = call.argument<String>("filePath")
                     val bytes = call.argument<ByteArray>("bytes")
@@ -293,6 +299,37 @@ class MainActivity : FlutterActivity() {
                 pendingMediaResult?.error("CANCELLED", "User cancelled photo selection", null)
             }
             pendingMediaResult = null
+        }
+    }
+
+    private fun openTelegramApp(bot: String, startParam: String): Boolean {
+        val tgUri = if (startParam.isNotEmpty()) {
+            Uri.parse("tg://resolve?domain=$bot&start=$startParam")
+        } else {
+            Uri.parse("tg://resolve?domain=$bot")
+        }
+        val tgIntent = Intent(Intent.ACTION_VIEW, tgUri).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+
+        return try {
+            startActivity(tgIntent)
+            true
+        } catch (_: Exception) {
+            try {
+                val webUri = if (startParam.isNotEmpty()) {
+                    Uri.parse("https://t.me/$bot?start=$startParam")
+                } else {
+                    Uri.parse("https://t.me/$bot")
+                }
+                val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(webIntent)
+                true
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 

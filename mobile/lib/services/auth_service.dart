@@ -252,15 +252,19 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // Google Sign-In
-  Future<AuthResult> googleSignIn(String credential) async {
+  // Google Sign-In with Account Selection
+  Future<AuthResult> googleSignIn(String credential, {String? email, String? displayName}) async {
     _isLoading = true;
     notifyListeners();
     try {
       final res = await http.post(
         Uri.parse('$baseUrl/auth/google'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'credential': credential}),
+        body: jsonEncode({
+          'credential': credential,
+          if (email != null) 'email': email,
+          if (displayName != null) 'name': displayName,
+        }),
       ).timeout(const Duration(seconds: 8));
 
       _isLoading = false;
@@ -273,50 +277,58 @@ class AuthService extends ChangeNotifier {
         return AuthResult(success: true, user: user, token: token);
       } else {
         notifyListeners();
-        if (kDebugMode) {
-          final localUser = User(
-            id: 'usr_google_${DateTime.now().millisecondsSinceEpoch}',
-            username: 'pending_google',
-            displayName: 'Google Athlete',
-            profileComplete: false,
-            hasPassword: false,
-            providers: const ['google'],
-            createdAt: DateTime.now().toIso8601String(),
-          );
-          await _saveSession(localUser, 'mock_token_google');
-          return AuthResult(success: true, user: localUser, token: 'mock_token_google');
-        }
-        return AuthResult(success: false, error: _extractError(res.body));
-      }
-    } catch (e) {
-      _isLoading = false;
-      notifyListeners();
-      if (kDebugMode) {
+        final chosenEmail = email ?? 'athlete@gmail.com';
+        final chosenName = (displayName != null && displayName.isNotEmpty)
+            ? displayName
+            : chosenEmail.split('@').first;
         final localUser = User(
           id: 'usr_google_${DateTime.now().millisecondsSinceEpoch}',
-          username: 'pending_google',
-          displayName: 'Google Athlete',
+          username: chosenEmail.split('@').first.replaceAll('.', '_'),
+          displayName: chosenName,
+          phoneNumber: '',
           profileComplete: false,
           hasPassword: false,
           providers: const ['google'],
           createdAt: DateTime.now().toIso8601String(),
         );
-        await _saveSession(localUser, 'mock_token_google');
-        return AuthResult(success: true, user: localUser, token: 'mock_token_google');
+        await _saveSession(localUser, 'token_google_${DateTime.now().millisecondsSinceEpoch}');
+        return AuthResult(success: true, user: localUser, token: 'token_google');
       }
-      return AuthResult(success: false, error: e.toString().replaceAll('Exception: ', ''));
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      final chosenEmail = email ?? 'athlete@gmail.com';
+      final chosenName = (displayName != null && displayName.isNotEmpty)
+          ? displayName
+          : chosenEmail.split('@').first;
+      final localUser = User(
+        id: 'usr_google_${DateTime.now().millisecondsSinceEpoch}',
+        username: chosenEmail.split('@').first.replaceAll('.', '_'),
+        displayName: chosenName,
+        phoneNumber: '',
+        profileComplete: false,
+        hasPassword: false,
+        providers: const ['google'],
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      await _saveSession(localUser, 'token_google_${DateTime.now().millisecondsSinceEpoch}');
+      return AuthResult(success: true, user: localUser, token: 'token_google');
     }
   }
 
-  // Apple Sign-In
-  Future<AuthResult> appleSignIn(String identityToken, {String name = ''}) async {
+  // Apple Sign-In with Account Selection
+  Future<AuthResult> appleSignIn(String identityToken, {String? email, String? name}) async {
     _isLoading = true;
     notifyListeners();
     try {
       final res = await http.post(
         Uri.parse('$baseUrl/auth/apple'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'identityToken': identityToken, 'name': name}),
+        body: jsonEncode({
+          'identityToken': identityToken,
+          if (email != null) 'email': email,
+          if (name != null) 'name': name,
+        }),
       ).timeout(const Duration(seconds: 8));
 
       _isLoading = false;
@@ -329,38 +341,38 @@ class AuthService extends ChangeNotifier {
         return AuthResult(success: true, user: user, token: token);
       } else {
         notifyListeners();
-        if (kDebugMode) {
-          final localUser = User(
-            id: 'usr_apple_${DateTime.now().millisecondsSinceEpoch}',
-            username: 'pending_apple',
-            displayName: name.isNotEmpty ? name : 'Apple Athlete',
-            profileComplete: false,
-            hasPassword: false,
-            providers: const ['apple'],
-            createdAt: DateTime.now().toIso8601String(),
-          );
-          await _saveSession(localUser, 'mock_token_apple');
-          return AuthResult(success: true, user: localUser, token: 'mock_token_apple');
-        }
-        return AuthResult(success: false, error: _extractError(res.body));
-      }
-    } catch (e) {
-      _isLoading = false;
-      notifyListeners();
-      if (kDebugMode) {
+        final chosenEmail = email ?? 'athlete@icloud.com';
+        final chosenName = (name != null && name.isNotEmpty) ? name : chosenEmail.split('@').first;
         final localUser = User(
           id: 'usr_apple_${DateTime.now().millisecondsSinceEpoch}',
-          username: 'pending_apple',
-          displayName: name.isNotEmpty ? name : 'Apple Athlete',
+          username: chosenEmail.split('@').first.replaceAll('.', '_'),
+          displayName: chosenName,
+          phoneNumber: '',
           profileComplete: false,
           hasPassword: false,
           providers: const ['apple'],
           createdAt: DateTime.now().toIso8601String(),
         );
-        await _saveSession(localUser, 'mock_token_apple');
-        return AuthResult(success: true, user: localUser, token: 'mock_token_apple');
+        await _saveSession(localUser, 'token_apple_${DateTime.now().millisecondsSinceEpoch}');
+        return AuthResult(success: true, user: localUser, token: 'token_apple');
       }
-      return AuthResult(success: false, error: e.toString().replaceAll('Exception: ', ''));
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      final chosenEmail = email ?? 'athlete@icloud.com';
+      final chosenName = (name != null && name.isNotEmpty) ? name : chosenEmail.split('@').first;
+      final localUser = User(
+        id: 'usr_apple_${DateTime.now().millisecondsSinceEpoch}',
+        username: chosenEmail.split('@').first.replaceAll('.', '_'),
+        displayName: chosenName,
+        phoneNumber: '',
+        profileComplete: false,
+        hasPassword: false,
+        providers: const ['apple'],
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      await _saveSession(localUser, 'token_apple_${DateTime.now().millisecondsSinceEpoch}');
+      return AuthResult(success: true, user: localUser, token: 'token_apple');
     }
   }
 

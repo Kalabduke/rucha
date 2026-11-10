@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
 import '../services/auth_service.dart';
+import '../services/media_share_service.dart';
+import '../widgets/rucha_logo.dart';
 
 enum AuthViewStep {
   form,
@@ -114,19 +116,24 @@ class _AuthScreenState extends State<AuthScreen> {
       final auth = Provider.of<AuthService>(context, listen: false);
       final res = await auth.telegramStart();
       if (!mounted) return;
+      final bot = res.bot.isNotEmpty ? res.bot : 'ruchaabot';
       setState(() {
         _isBusy = false;
         _tgLoginId = res.loginId;
-        _tgBotName = res.bot;
-        _tgLink = res.link;
+        _tgBotName = bot;
+        _tgLink = res.link.isNotEmpty ? res.link : 'https://t.me/$bot?start=${res.loginId}';
         _currentStep = AuthViewStep.telegramCode;
       });
 
-      if (res.link.isNotEmpty) {
-        final uri = Uri.parse(res.link);
-        if (await canLaunchUrl(uri)) {
+      // 1. Directly launch native Telegram app with start parameter
+      bool opened = await MediaShareService.openTelegram(bot: bot, start: res.loginId);
+
+      // 2. If native app intent was not handled, launch via external URL
+      if (!opened) {
+        final uri = Uri.parse(_tgLink);
+        try {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
+        } catch (_) {}
       }
     } catch (e) {
       if (!mounted) return;
@@ -172,14 +179,186 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  // Google Sign-Up / Login
+  // Google Sign-Up / Login with Account Chooser
   Future<void> _handleGoogleAuth() async {
+    _showGoogleAccountPicker();
+  }
+
+  void _showGoogleAccountPicker() {
+    final customEmailController = TextEditingController();
+    bool showCustomInput = false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161C24),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'G',
+                                style: TextStyle(
+                                  color: Color(0xFF4285F4),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Choose a Google Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text('to sign up for RUCHA', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.xmark_circle_fill, color: RuchaTheme.textSecondary),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(color: RuchaTheme.border),
+                  const SizedBox(height: 8),
+
+                  // Account option 1
+                  _googleAccountTile(
+                    ctx: ctx,
+                    name: 'Abebe Bikila',
+                    email: 'abebe.bikila@gmail.com',
+                    initials: 'AB',
+                    color: const Color(0xFF0F9D58),
+                  ),
+
+                  // Account option 2
+                  _googleAccountTile(
+                    ctx: ctx,
+                    name: 'Highland Athlete',
+                    email: 'athlete.ethiopia@gmail.com',
+                    initials: 'HA',
+                    color: const Color(0xFF4285F4),
+                  ),
+
+                  // Account option 3
+                  _googleAccountTile(
+                    ctx: ctx,
+                    name: 'Addis Runner',
+                    email: 'addis.runner@gmail.com',
+                    initials: 'AR',
+                    color: const Color(0xFFF4B400),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  if (!showCustomInput)
+                    ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: RuchaTheme.surface2,
+                        child: Icon(CupertinoIcons.person_badge_plus, color: Colors.white70, size: 20),
+                      ),
+                      title: const Text('Use another Google account', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      trailing: const Icon(CupertinoIcons.chevron_right, size: 16, color: RuchaTheme.textSecondary),
+                      onTap: () => setModalState(() => showCustomInput = true),
+                    )
+                  else ...[
+                    TextField(
+                      controller: customEmailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Enter your Gmail address',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        prefixIcon: const Icon(CupertinoIcons.mail, size: 18, color: RuchaTheme.textSecondary),
+                        filled: true,
+                        fillColor: RuchaTheme.surface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: () {
+                        final email = customEmailController.text.trim();
+                        if (email.isNotEmpty && email.contains('@')) {
+                          final name = email.split('@').first;
+                          Navigator.pop(ctx);
+                          _executeGoogleSignIn(email: email, name: name);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4285F4),
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Sign in with this account'),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _googleAccountTile({
+    required BuildContext ctx,
+    required String name,
+    required String email,
+    required String initials,
+    required Color color,
+  }) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: color,
+        child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+      ),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: Text(email, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+      onTap: () {
+        Navigator.pop(ctx);
+        _executeGoogleSignIn(email: email, name: name);
+      },
+    );
+  }
+
+  Future<void> _executeGoogleSignIn({required String email, required String name}) async {
     setState(() {
       _isBusy = true;
       _errorMessage = '';
     });
     final auth = Provider.of<AuthService>(context, listen: false);
-    final res = await auth.googleSignIn('google_oauth_token');
+    final res = await auth.googleSignIn('google_oauth_token', email: email, displayName: name);
 
     if (!mounted) return;
     setState(() => _isBusy = false);
@@ -188,8 +367,8 @@ class _AuthScreenState extends State<AuthScreen> {
       if (!res.user!.profileComplete) {
         setState(() {
           _currentStep = AuthViewStep.completeProfile;
-          _displayNameController.text = res.user!.displayName == 'Google Athlete' ? '' : res.user!.displayName;
-          _usernameController.text = '';
+          _displayNameController.text = name;
+          _usernameController.text = email.split('@').first.replaceAll('.', '_');
           _passwordController.text = '';
         });
       } else {
@@ -200,14 +379,152 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  // Apple ID Sign-Up / Login
+  // Apple ID Sign-Up / Login with Account Chooser
   Future<void> _handleAppleAuth() async {
+    _showAppleAccountPicker();
+  }
+
+  void _showAppleAccountPicker() {
+    final customAppleController = TextEditingController();
+    bool showCustomInput = false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161C24),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.apple, size: 28, color: Colors.white),
+                          SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Sign in with Apple ID', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text('to sign up for RUCHA', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.xmark_circle_fill, color: RuchaTheme.textSecondary),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(color: RuchaTheme.border),
+                  const SizedBox(height: 8),
+
+                  _appleAccountTile(
+                    ctx: ctx,
+                    name: 'Apple Athlete',
+                    email: 'athlete@icloud.com',
+                  ),
+
+                  _appleAccountTile(
+                    ctx: ctx,
+                    name: 'Haile Gebrselassie',
+                    email: 'haile.g@icloud.com',
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  if (!showCustomInput)
+                    ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: RuchaTheme.surface2,
+                        child: Icon(Icons.apple, color: Colors.white70, size: 20),
+                      ),
+                      title: const Text('Use a different Apple ID', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      trailing: const Icon(CupertinoIcons.chevron_right, size: 16, color: RuchaTheme.textSecondary),
+                      onTap: () => setModalState(() => showCustomInput = true),
+                    )
+                  else ...[
+                    TextField(
+                      controller: customAppleController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Enter your Apple ID email',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        prefixIcon: const Icon(Icons.apple, size: 18, color: RuchaTheme.textSecondary),
+                        filled: true,
+                        fillColor: RuchaTheme.surface,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: () {
+                        final email = customAppleController.text.trim();
+                        if (email.isNotEmpty && email.contains('@')) {
+                          final name = email.split('@').first;
+                          Navigator.pop(ctx);
+                          _executeAppleSignIn(email: email, name: name);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                      ),
+                      child: const Text('Continue with this Apple ID'),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _appleAccountTile({
+    required BuildContext ctx,
+    required String name,
+    required String email,
+  }) {
+    return ListTile(
+      leading: const CircleAvatar(
+        backgroundColor: Colors.white12,
+        child: Icon(Icons.apple, color: Colors.white, size: 22),
+      ),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: Text(email, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+      onTap: () {
+        Navigator.pop(ctx);
+        _executeAppleSignIn(email: email, name: name);
+      },
+    );
+  }
+
+  Future<void> _executeAppleSignIn({required String email, required String name}) async {
     setState(() {
       _isBusy = true;
       _errorMessage = '';
     });
     final auth = Provider.of<AuthService>(context, listen: false);
-    final res = await auth.appleSignIn('apple_identity_token');
+    final res = await auth.appleSignIn('apple_identity_token', email: email, name: name);
 
     if (!mounted) return;
     setState(() => _isBusy = false);
@@ -216,8 +533,8 @@ class _AuthScreenState extends State<AuthScreen> {
       if (!res.user!.profileComplete) {
         setState(() {
           _currentStep = AuthViewStep.completeProfile;
-          _displayNameController.text = res.user!.displayName == 'Apple Athlete' ? '' : res.user!.displayName;
-          _usernameController.text = '';
+          _displayNameController.text = name;
+          _usernameController.text = email.split('@').first.replaceAll('.', '_');
           _passwordController.text = '';
         });
       } else {
@@ -335,21 +652,14 @@ class _AuthScreenState extends State<AuthScreen> {
                 icon: const Icon(CupertinoIcons.xmark, color: RuchaTheme.textSecondary),
                 onPressed: () => Navigator.of(context).pop(false),
               ),
-        title: Row(
+        title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                color: RuchaTheme.accentGreen,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Icon(CupertinoIcons.flame_fill, size: 14, color: Colors.white),
-            ),
-            const SizedBox(width: 8),
-            const Text(
+            RuchaLogo(size: 26, showText: false, showFlag: false),
+            SizedBox(width: 8),
+            Text(
               'RUCHA',
-              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.0, fontSize: 16),
+              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 16),
             ),
           ],
         ),
@@ -410,6 +720,12 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const SizedBox(height: 8),
+        const Center(
+          child: RuchaLogo(size: 64, showText: true, showFlag: true),
+        ),
+        const SizedBox(height: 22),
+
         // Mode Selector: [ Create Account ] vs [ Sign In ]
         Container(
           padding: const EdgeInsets.all(4),
@@ -802,9 +1118,13 @@ class _AuthScreenState extends State<AuthScreen> {
 
               ElevatedButton.icon(
                 onPressed: () async {
-                  final uri = Uri.parse(_tgLink.isNotEmpty ? _tgLink : 'https://t.me/ruchaabot');
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  final bot = _tgBotName.isNotEmpty ? _tgBotName : 'ruchaabot';
+                  bool ok = await MediaShareService.openTelegram(bot: bot, start: _tgLoginId);
+                  if (!ok) {
+                    final uri = Uri.parse(_tgLink.isNotEmpty ? _tgLink : 'https://t.me/$bot');
+                    try {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } catch (_) {}
                   }
                 },
                 icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
@@ -1016,9 +1336,9 @@ class _AuthScreenState extends State<AuthScreen> {
           style: const TextStyle(color: Colors.white, fontSize: 15),
           decoration: InputDecoration(
             prefixIcon: const Icon(CupertinoIcons.lock, size: 18, color: RuchaTheme.textSecondary),
-            hintText: 'at least 5 characters',
+            hintText: 'at least 8 characters',
             hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-            helperText: 'You can log in directly anytime using this username and password',
+            helperText: 'At least 8 characters. You can log in directly anytime using this username and password',
             helperStyle: TextStyle(color: RuchaTheme.textSecondary.withOpacity(0.8), fontSize: 11),
             filled: true,
             fillColor: RuchaTheme.surface,

@@ -13,6 +13,7 @@ import 'segments_screen.dart';
 import 'community_screen.dart';
 import 'challenges_screen.dart';
 import 'profile_screen.dart';
+import '../widgets/rucha_logo.dart';
 
 class _NavItem {
   final IconData icon;
@@ -257,14 +258,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         const SizedBox(height: 14),
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(7),
-                              decoration: BoxDecoration(
-                                color: RuchaTheme.accentGreen,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(CupertinoIcons.flame_fill, size: 18, color: Colors.white),
-                            ),
+                            const RuchaLogo(size: 32, showText: false, showFlag: false),
                             const SizedBox(width: 10),
                             const Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,14 +380,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         titleSpacing: 0,
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: RuchaTheme.accentGreen,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(CupertinoIcons.flame_fill, size: 16, color: Colors.white),
-            ),
+            const RuchaLogo(size: 26, showText: false, showFlag: false),
             const SizedBox(width: 8),
             Row(
               children: [

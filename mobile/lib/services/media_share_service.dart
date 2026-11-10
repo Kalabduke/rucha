@@ -59,4 +59,19 @@ class MediaShareService {
       return false;
     }
   }
+
+  /// Opens Telegram app directly using native Android intent (tg:// or https://t.me).
+  static Future<bool> openTelegram({String bot = 'ruchaabot', String start = ''}) async {
+    if (kIsWeb || !Platform.isAndroid) return false;
+    try {
+      final bool? success = await _channel.invokeMethod<bool>('openTelegram', {
+        'bot': bot,
+        'start': start,
+      });
+      return success ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('Open Telegram error: ${e.message}');
+      return false;
+    }
+  }
 }

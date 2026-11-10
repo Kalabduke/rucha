@@ -109,7 +109,7 @@ RUCHA uses one account per person:
 - **Username** — 3–20 characters, lowercase letters, numbers and underscores.
   It is unique and case-insensitive, so `Selam_Runs` and `selam_runs` are the
   same name.
-- **Password** — at least 5 characters. Stored as a bcrypt hash.
+- **Password** — at least 8 characters. Stored as a bcrypt hash.
 - **Social sign-in** — Telegram, Google and Apple verify the person first. A new
   social account is created as *incomplete* and cannot use data endpoints until
   the person chooses a RUCHA username and password. Existing accounts return to
