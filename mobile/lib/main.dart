@@ -1,7 +1,14 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'core/theme.dart';
+import 'services/api_service.dart';
+import 'services/tracking_service.dart';
+import 'screens/main_navigation.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,23 +24,33 @@ void main() {
   runApp(const RuchaApp());
 }
 
+bool _isMobilePlatform() {
+  if (kIsWeb) return false;
+  try {
+    return Platform.isAndroid || Platform.isIOS;
+  } catch (_) {
+    return false;
+  }
+}
+
 class RuchaApp extends StatelessWidget {
   const RuchaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'RUCHA',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0C1017),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF0E8A6A),
-          surface: Color(0xFF151B26),
-        ),
+    return MultiProvider(
+      providers: [
+        Provider<ApiService>(create: (_) => ApiService()),
+        ChangeNotifierProvider<TrackingService>(create: (_) => TrackingService()),
+      ],
+      child: MaterialApp(
+        title: 'RUCHA',
+        debugShowCheckedModeBanner: false,
+        theme: RuchaTheme.darkTheme,
+        // On Android / iOS, loads the complete RUCHA hybrid webview with native GPS.
+        // On Linux Desktop (Fedora), loads the full native Flutter app with 0 crashes.
+        home: _isMobilePlatform() ? const RuchaWebViewScreen() : const MainNavigationScreen(),
       ),
-      home: const RuchaWebViewScreen(),
     );
   }
 }
@@ -46,7 +63,7 @@ class RuchaWebViewScreen extends StatefulWidget {
 }
 
 class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
-  late final WebViewController _controller;
+  WebViewController? _controller;
   bool _isLoading = true;
   double _loadingProgress = 0.0;
   bool _hasError = false;
@@ -57,7 +74,9 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
   @override
   void initState() {
     super.initState();
-    _initWebView();
+    if (_isMobilePlatform()) {
+      _initWebView();
+    }
   }
 
   void _initWebView() {
@@ -99,7 +118,6 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
             }
           },
           onWebResourceError: (WebResourceError error) {
-            // If offline, load bundled local asset
             if (mounted && error.isForMainFrame == true) {
               _loadOfflineFallback();
             }
@@ -126,7 +144,7 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
 
   Future<void> _loadApp() async {
     try {
-      await _controller.loadRequest(Uri.parse(liveAppUrl));
+      await _controller?.loadRequest(Uri.parse(liveAppUrl));
     } catch (_) {
       _loadOfflineFallback();
     }
@@ -139,7 +157,7 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
       });
     }
     try {
-      await _controller.loadFlutterAsset(offlineAssetPath);
+      await _controller?.loadFlutterAsset(offlineAssetPath);
     } catch (_) {
       if (mounted) {
         setState(() => _hasError = true);
@@ -149,12 +167,16 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_controller == null) {
+      return const MainNavigationScreen();
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (await _controller.canGoBack()) {
-          await _controller.goBack();
+        if (await _controller!.canGoBack()) {
+          await _controller!.goBack();
         } else {
           SystemNavigator.pop();
         }
@@ -165,7 +187,7 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
           bottom: false,
           child: Stack(
             children: [
-              WebViewWidget(controller: _controller),
+              WebViewWidget(controller: _controller!),
               if (_isLoading)
                 LinearProgressIndicator(
                   value: _loadingProgress > 0 ? _loadingProgress : null,
