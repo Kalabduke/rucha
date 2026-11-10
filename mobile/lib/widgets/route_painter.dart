@@ -5,13 +5,17 @@ import '../core/theme.dart';
 
 class RoutePainter extends CustomPainter {
   final List<TrackPoint> points;
-  final Color routeColor;
+  final Color? routeColor;
+  final String activityType; // 'run' or 'ride'
   final bool showPoints;
+  final bool isElevationGraded;
 
   RoutePainter({
     required this.points,
-    this.routeColor = RuchaTheme.accentCoral,
+    this.routeColor,
+    this.activityType = 'run',
     this.showPoints = true,
+    this.isElevationGraded = false,
   });
 
   @override
@@ -25,16 +29,20 @@ class RoutePainter extends CustomPainter {
       return;
     }
 
+    final isRide = activityType.toLowerCase() == 'ride';
+    final primaryColor = routeColor ?? (isRide ? const Color(0xFF00E676) : const Color(0xFFFC4C02));
+    final secondaryColor = isRide ? const Color(0xFF00B0FF) : const Color(0xFFFF9100);
+
     if (points.length == 1) {
       final center = Offset(size.width / 2, size.height / 2);
       final p = Paint()
-        ..color = routeColor
+        ..color = primaryColor
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(center, 6, p);
+      canvas.drawCircle(center, 7, p);
       return;
     }
 
-    // Compute bounding box
+    // Compute geographic bounding box
     double minLat = points.first.lat;
     double maxLat = points.first.lat;
     double minLng = points.first.lng;
@@ -47,10 +55,10 @@ class RoutePainter extends CustomPainter {
       if (pt.lng > maxLng) maxLng = pt.lng;
     }
 
-    final dLat = max(0.0005, maxLat - minLat);
-    final dLng = max(0.0005, maxLng - minLng);
+    final dLat = max(0.0004, maxLat - minLat);
+    final dLng = max(0.0004, maxLng - minLng);
 
-    const padding = 24.0;
+    const padding = 28.0;
     final drawW = size.width - (padding * 2);
     final drawH = size.height - (padding * 2);
 
@@ -64,51 +72,79 @@ class RoutePainter extends CustomPainter {
       return Offset(x, y);
     }
 
-    final path = Path();
-    final first = toOffset(points.first);
-    path.moveTo(first.dx, first.dy);
+    final screenPoints = points.map(toOffset).toList();
 
-    for (int i = 1; i < points.length; i++) {
-      final off = toOffset(points[i]);
-      path.lineTo(off.dx, off.dy);
+    final path = Path();
+    path.moveTo(screenPoints.first.dx, screenPoints.first.dy);
+    for (int i = 1; i < screenPoints.length; i++) {
+      path.lineTo(screenPoints[i].dx, screenPoints[i].dy);
     }
 
-    // Glow effect
+    // 1. Strava-Style Dark Drop Shadow / Depth
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.5)
+      ..strokeWidth = 10.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0);
+    canvas.drawPath(path, shadowPaint);
+
+    // 2. Strava Vibrant Outer Glow (Emulates PWA app.js line 489: 11px wide glow)
     final glowPaint = Paint()
-      ..color = routeColor.withOpacity(0.35)
-      ..strokeWidth = 8.0
+      ..shader = LinearGradient(
+        colors: [primaryColor.withOpacity(0.4), secondaryColor.withOpacity(0.4)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..strokeWidth = 11.0
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     canvas.drawPath(path, glowPaint);
 
-    // Primary route line
+    // 3. Primary Route Polyline (4.2px vibrant line)
     final linePaint = Paint()
-      ..color = routeColor
-      ..strokeWidth = 3.5
+      ..shader = LinearGradient(
+        colors: [primaryColor, secondaryColor],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..strokeWidth = 4.2
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     canvas.drawPath(path, linePaint);
 
-    if (showPoints) {
-      // Start pin (green)
-      final startPaint = Paint()
-        ..color = RuchaTheme.accentGreen
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(first, 6.0, startPaint);
+    // 4. Strava High-Contrast Core Highlight (1.4px white highlight)
+    final corePaint = Paint()
+      ..color = Colors.white.withOpacity(0.7)
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawPath(path, corePaint);
 
-      // Finish pin (red/gold)
-      final last = toOffset(points.last);
-      final finishPaint = Paint()
-        ..color = RuchaTheme.accentGold
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(last, 6.0, finishPaint);
+    if (showPoints) {
+      final startPt = screenPoints.first;
+      final finishPt = screenPoints.last;
+
+      // Start Pin (🟢 Strava Start Marker with white ring)
+      canvas.drawCircle(startPt, 8.0, Paint()..color = Colors.black45);
+      canvas.drawCircle(startPt, 7.0, Paint()..color = Colors.white);
+      canvas.drawCircle(startPt, 5.0, Paint()..color = const Color(0xFF00C853));
+
+      // Finish Pin (🏁 / 🔴 Strava Finish Marker with white ring)
+      canvas.drawCircle(finishPt, 8.0, Paint()..color = Colors.black45);
+      canvas.drawCircle(finishPt, 7.0, Paint()..color = Colors.white);
+      canvas.drawCircle(finishPt, 5.0, Paint()..color = const Color(0xFFFF1744));
     }
   }
 
   @override
   bool shouldRepaint(covariant RoutePainter oldDelegate) {
-    return oldDelegate.points.length != points.length || oldDelegate.routeColor != routeColor;
+    return oldDelegate.points.length != points.length ||
+        oldDelegate.routeColor != routeColor ||
+        oldDelegate.activityType != activityType;
   }
 }

@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/tracking_service.dart';
+import 'services/smartwatch_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_navigation.dart';
 
@@ -31,6 +32,7 @@ class RuchaApp extends StatelessWidget {
       providers: [
         Provider<ApiService>(create: (_) => ApiService()),
         ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
+        ChangeNotifierProvider<SmartwatchService>(create: (_) => SmartwatchService()),
         ChangeNotifierProvider<TrackingService>(create: (_) => TrackingService()),
       ],
       child: MaterialApp(

@@ -91,6 +91,8 @@ class Activity {
   final String city;
   final List<TrackPoint> track;
   final List<ActivitySplit> splits;
+  final int? avgHr;
+  final int? maxHr;
   final String? ownerId;
   final String? ownerName;
 
@@ -107,6 +109,8 @@ class Activity {
     required this.city,
     this.track = const [],
     this.splits = const [],
+    this.avgHr,
+    this.maxHr,
     this.ownerId,
     this.ownerName,
   });
@@ -124,6 +128,8 @@ class Activity {
     'city': city,
     'track': track.map((p) => p.toJson()).toList(),
     'splits': splits.map((s) => s.toJson()).toList(),
+    if (avgHr != null) 'avgHr': avgHr,
+    if (maxHr != null) 'maxHr': maxHr,
     if (ownerId != null) 'ownerId': ownerId,
     if (ownerName != null) 'ownerName': ownerName,
   };
@@ -163,6 +169,8 @@ class Activity {
       city: json['city']?.toString() ?? 'addis',
       track: trackPoints,
       splits: splitsList,
+      avgHr: (json['avgHr'] as num?)?.toInt(),
+      maxHr: (json['maxHr'] as num?)?.toInt(),
       ownerId: json['ownerId']?.toString(),
       ownerName: json['ownerName']?.toString(),
     );

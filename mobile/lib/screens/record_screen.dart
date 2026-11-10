@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/tracking_service.dart';
 import '../services/api_service.dart';
+import '../services/smartwatch_service.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../models/legend_ghost.dart';
@@ -32,9 +33,18 @@ class _RecordScreenState extends State<RecordScreen> {
   @override
   Widget build(BuildContext context) {
     final tracking = context.watch<TrackingService>();
+    final smartwatch = context.watch<SmartwatchService>();
     final isRunning = tracking.status == RecordingStatus.running;
     final isPaused = tracking.status == RecordingStatus.paused;
     final isIdle = tracking.status == RecordingStatus.idle;
+
+    // Sync smartwatch heart rate into tracking service
+    if (smartwatch.currentBpm > 0 && tracking.currentHr != smartwatch.currentBpm) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        tracking.setCurrentHeartRate(smartwatch.currentBpm);
+      });
+    }
 
     // Check for new kilometre split notification note
     if (tracking.splits.length > _lastNotifiedSplit && _selectedLegend != null) {
@@ -73,6 +83,8 @@ class _RecordScreenState extends State<RecordScreen> {
       appBar: AppBar(
         title: const Text('Record Activity'),
         actions: [
+          _buildSmartwatchBadge(context, smartwatch),
+          const SizedBox(width: 8),
           _buildGpsBadge(tracking),
           const SizedBox(width: 14),
         ],
@@ -168,7 +180,7 @@ class _RecordScreenState extends State<RecordScreen> {
                   initialZoom: 15,
                   track: tracking.track,
                   currentPosition: tracking.track.isNotEmpty ? tracking.track.last : null,
-                  routeColor: tracking.activityType == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
+                  routeColor: tracking.activityType == 'ride' ? const Color(0xFF00E676) : const Color(0xFFFC4C02),
                   isInteractive: true,
                   isDarkMode: true,
                 ),
@@ -181,7 +193,7 @@ class _RecordScreenState extends State<RecordScreen> {
 
               const SizedBox(height: 14),
 
-              // Metrics Grid
+              // Strava-Style Metrics Grid (Supports Run Pace vs Ride Speed + Heart Rate + Calories)
               GridView.count(
                 crossAxisCount: 2,
                 crossAxisSpacing: 10,
@@ -203,18 +215,43 @@ class _RecordScreenState extends State<RecordScreen> {
                     icon: CupertinoIcons.stopwatch,
                     iconColor: RuchaTheme.accentGold,
                   ),
-                  MetricCard(
-                    label: 'Pace',
-                    value: RuchaConstants.formatPace(tracking.currentPace),
-                    unit: '/km',
-                    icon: CupertinoIcons.speedometer,
-                    iconColor: RuchaTheme.accentCoral,
-                  ),
+                  if (tracking.activityType == 'ride')
+                    MetricCard(
+                      label: 'Speed',
+                      value: tracking.currentSpeedKmh.toStringAsFixed(1),
+                      unit: 'km/h',
+                      icon: CupertinoIcons.speedometer,
+                      iconColor: const Color(0xFF00E676),
+                    )
+                  else
+                    MetricCard(
+                      label: 'Pace',
+                      value: RuchaConstants.formatPace(tracking.currentPace),
+                      unit: '/km',
+                      icon: CupertinoIcons.speedometer,
+                      iconColor: const Color(0xFFFC4C02),
+                    ),
                   MetricCard(
                     label: 'Elevation',
                     value: '+${tracking.elevationGain.round()}',
                     unit: 'm',
                     icon: CupertinoIcons.arrow_up_right,
+                  ),
+                  MetricCard(
+                    label: 'Heart Rate',
+                    value: smartwatch.currentBpm > 0
+                        ? '${smartwatch.currentBpm}'
+                        : (tracking.currentHr != null ? '${tracking.currentHr}' : '--'),
+                    unit: 'bpm',
+                    icon: CupertinoIcons.heart_fill,
+                    iconColor: Colors.redAccent,
+                  ),
+                  MetricCard(
+                    label: 'Calories',
+                    value: '${tracking.calories.round()}',
+                    unit: 'kcal',
+                    icon: CupertinoIcons.flame_fill,
+                    iconColor: Colors.orangeAccent,
                   ),
                 ],
               ),
@@ -535,6 +572,251 @@ class _RecordScreenState extends State<RecordScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSmartwatchBadge(BuildContext context, SmartwatchService watch) {
+    final connected = watch.isConnected;
+    final bpm = watch.currentBpm;
+    final color = connected ? Colors.redAccent : RuchaTheme.textSecondary;
+    final bg = connected ? Colors.redAccent.withOpacity(0.12) : RuchaTheme.surface2;
+
+    return InkWell(
+      onTap: () => _showSmartwatchSheet(context, watch),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              connected ? CupertinoIcons.heart_fill : CupertinoIcons.bluetooth,
+              size: 13,
+              color: color,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              connected
+                  ? (bpm > 0 ? '$bpm BPM' : (watch.connectedDeviceName ?? 'Watch'))
+                  : 'Watch',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSmartwatchSheet(BuildContext context, SmartwatchService watch) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: RuchaTheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(CupertinoIcons.heart_circle_fill, color: Colors.redAccent, size: 24),
+                          SizedBox(width: 10),
+                          Text(
+                            'Smartwatch & Sensors',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.xmark_circle_fill, color: RuchaTheme.textSecondary),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Connection Status Box
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: watch.isConnected ? Colors.redAccent.withOpacity(0.1) : RuchaTheme.surface2,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: watch.isConnected ? Colors.redAccent.withOpacity(0.4) : RuchaTheme.border,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          watch.isConnected ? CupertinoIcons.heart_fill : CupertinoIcons.circle,
+                          color: watch.isConnected ? Colors.redAccent : RuchaTheme.textSecondary,
+                          size: 26,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                watch.isConnected
+                                    ? (watch.connectedDeviceName ?? 'Connected Smartwatch')
+                                    : 'No Smartwatch Connected',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                watch.isConnected
+                                    ? 'Streaming Heart Rate · ${watch.currentBpm} BPM'
+                                    : 'Connect a Wear OS, Garmin, Apple Watch BLE, or Polar sensor',
+                                style: TextStyle(
+                                  color: watch.isConnected ? Colors.redAccent : RuchaTheme.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (watch.isConnected)
+                          TextButton(
+                            onPressed: () {
+                              watch.disconnect();
+                              setSheetState(() {});
+                            },
+                            child: const Text('Disconnect', style: TextStyle(color: RuchaTheme.accentRed)),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Scan Button
+                  ElevatedButton.icon(
+                    onPressed: watch.isScanning
+                        ? null
+                        : () async {
+                            await watch.startScan();
+                            setSheetState(() {});
+                          },
+                    icon: watch.isScanning
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(CupertinoIcons.antenna_radiowaves_left_right, size: 18),
+                    label: Text(watch.isScanning ? 'Scanning for nearby devices…' : 'Scan for Nearby Smartwatches'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: RuchaTheme.accentGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                  ),
+
+                  // Discovered Devices List
+                  if (watch.discoveredWatches.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const Text('DISCOVERED DEVICES', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    ...watch.discoveredWatches.map((dev) {
+                      final isCurrent = watch.connectedDeviceAddress == dev.address;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: RuchaTheme.surface2,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: isCurrent ? RuchaTheme.accentGreen : RuchaTheme.border),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(CupertinoIcons.device_laptop, size: 18, color: RuchaTheme.accentGold),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(dev.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    Text(dev.address, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            OutlinedButton(
+                              onPressed: isCurrent
+                                  ? null
+                                  : () async {
+                                      await watch.connect(dev);
+                                      setSheetState(() {});
+                                    },
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                side: BorderSide(color: isCurrent ? RuchaTheme.accentGreen : RuchaTheme.border),
+                              ),
+                              child: Text(isCurrent ? 'Paired' : 'Connect', style: const TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+
+                  const SizedBox(height: 14),
+
+                  // Simulation Switch (For testing & demos)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: RuchaTheme.surface2,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: RuchaTheme.border),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Virtual Smartwatch Demo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text('Simulates live athletic heart rate (140-175 BPM)', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11)),
+                          ],
+                        ),
+                        Switch(
+                          value: watch.isSimulatorMode,
+                          activeColor: RuchaTheme.accentGreen,
+                          onChanged: (val) {
+                            watch.toggleSimulatorMode(val);
+                            setSheetState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

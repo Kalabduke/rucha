@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rucha_mobile/core/constants.dart';
 import 'package:rucha_mobile/models/user.dart';
+import 'package:rucha_mobile/models/activity.dart';
 import 'package:rucha_mobile/models/legend_ghost.dart';
 import 'package:rucha_mobile/services/tracking_service.dart';
+import 'package:rucha_mobile/services/smartwatch_service.dart';
 
 void main() {
   test('RUCHA Core constants and Ethiopian cities are configured', () {
@@ -83,5 +85,48 @@ void main() {
 
     final noteBehind = abebe.getPaceDeltaNote(210.0); // 3:30/km (slower than 3:12)
     expect(noteBehind.contains('behind Abebe Bikila'), isTrue);
+  });
+
+  test('SmartwatchService virtual simulator and heart rate calculations', () async {
+    final watch = SmartwatchService();
+    expect(watch.isConnected, isFalse);
+
+    // Toggle simulator mode
+    watch.toggleSimulatorMode(true);
+    expect(watch.isConnected, isTrue);
+    expect(watch.connectedDeviceName?.contains('Wear OS'), isTrue);
+    expect(watch.currentBpm, greaterThanOrEqualTo(138));
+    expect(watch.avgBpm, greaterThan(0));
+    expect(watch.maxBpm, greaterThanOrEqualTo(watch.currentBpm));
+
+    watch.disconnect();
+    expect(watch.isConnected, isFalse);
+    expect(watch.currentBpm, equals(0));
+  });
+
+  test('Activity model serializes and restores heart rate metrics', () {
+    final act = Activity(
+      id: 'act_hr_123',
+      title: 'Entoto Ride',
+      type: 'ride',
+      distance: 24.5,
+      duration: 3600,
+      elevation: 480.0,
+      pace: 146.9,
+      date: DateTime.now(),
+      city: 'addis',
+      avgHr: 156,
+      maxHr: 178,
+    );
+
+    final json = act.toJson();
+    expect(json['type'], equals('ride'));
+    expect(json['avgHr'], equals(156));
+    expect(json['maxHr'], equals(178));
+
+    final restored = Activity.fromJson(json);
+    expect(restored.type, equals('ride'));
+    expect(restored.avgHr, equals(156));
+    expect(restored.maxHr, equals(178));
   });
 }

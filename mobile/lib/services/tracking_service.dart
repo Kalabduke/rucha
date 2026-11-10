@@ -32,6 +32,7 @@ class TrackingService extends ChangeNotifier {
   double _elevationGain = 0.0;
   double _calories = 0.0;
   double _currentPace = 0.0;
+  int? _currentHr;
   double? _lastAccuracy;
   String? _gpsWarning;
 
@@ -66,8 +67,15 @@ class TrackingService extends ChangeNotifier {
   double get elevationGain => _elevationGain;
   double get calories => _calories;
   double get currentPace => _currentPace;
+  int? get currentHr => _currentHr;
+  double get currentSpeedKmh => _elapsedSeconds > 0 ? (_totalDistanceKm / (_elapsedSeconds / 3600.0)) : 0.0;
   double? get lastAccuracy => _lastAccuracy;
   String? get gpsWarning => _gpsWarning;
+
+  void setCurrentHeartRate(int? hr) {
+    _currentHr = hr;
+    notifyListeners();
+  }
 
   Future<void> _initGps() async {
     if (kIsWeb) return;
@@ -248,6 +256,17 @@ class TrackingService extends ChangeNotifier {
 
     _status = RecordingStatus.finished;
 
+    int? avgHr;
+    int? maxHr;
+    final hrs = _track.map((p) => p.hr).whereType<int>().toList();
+    if (hrs.isNotEmpty) {
+      avgHr = (hrs.reduce((a, b) => a + b) / hrs.length).round();
+      maxHr = hrs.reduce(max);
+    } else if (_currentHr != null && _currentHr! > 0) {
+      avgHr = _currentHr;
+      maxHr = _currentHr;
+    }
+
     final act = Activity(
       id: 'act_${DateTime.now().millisecondsSinceEpoch}',
       title: _activityName.isNotEmpty ? _activityName : 'RUCHA ${_activityType.toUpperCase()}',
@@ -261,6 +280,8 @@ class TrackingService extends ChangeNotifier {
       city: _selectedCity,
       track: List.from(_track),
       splits: List.from(_splits),
+      avgHr: avgHr,
+      maxHr: maxHr,
     );
 
     notifyListeners();
@@ -395,6 +416,7 @@ class TrackingService extends ChangeNotifier {
       t: t,
       accuracy: acc,
       speed: speed,
+      hr: _currentHr,
     );
     _track.add(pt);
 
