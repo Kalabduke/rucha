@@ -3,10 +3,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'core/theme.dart';
 import 'services/api_service.dart';
+import 'services/auth_service.dart';
 import 'services/tracking_service.dart';
 import 'screens/main_navigation.dart';
 
@@ -41,6 +43,7 @@ class RuchaApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         Provider<ApiService>(create: (_) => ApiService()),
+        ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
         ChangeNotifierProvider<TrackingService>(create: (_) => TrackingService()),
       ],
       child: MaterialApp(
@@ -121,6 +124,18 @@ class _RuchaWebViewScreenState extends State<RuchaWebViewScreen> {
             if (mounted && error.isForMainFrame == true) {
               _loadOfflineFallback();
             }
+          },
+          onNavigationRequest: (NavigationRequest request) {
+            final url = request.url;
+            if (url.startsWith('https://t.me/') ||
+                url.startsWith('tg://') ||
+                url.startsWith('intent:') ||
+                url.startsWith('mailto:') ||
+                url.startsWith('tel:')) {
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
           },
         ),
       );

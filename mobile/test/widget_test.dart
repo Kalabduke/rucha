@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rucha_mobile/core/constants.dart';
-import 'package:rucha_mobile/models/activity.dart';
+import 'package:rucha_mobile/models/user.dart';
 import 'package:rucha_mobile/services/tracking_service.dart';
 
 void main() {
@@ -41,5 +41,22 @@ void main() {
     );
     expect(accepted2, isTrue);
     expect(tracker.track.length, equals(1));
+  });
+
+  test('AuthService models and username validation', () {
+    final user = User(
+      id: 'usr_123',
+      username: 'haile_g',
+      displayName: 'Haile Gebrselassie',
+      providers: const ['telegram'],
+      createdAt: '2026-11-10T08:00:00Z',
+    );
+    expect(user.username, equals('haile_g'));
+    expect(user.providers.contains('telegram'), isTrue);
+
+    final json = user.toJson();
+    final restored = User.fromJson(json);
+    expect(restored.id, equals('usr_123'));
+    expect(restored.displayName, equals('Haile Gebrselassie'));
   });
 }
