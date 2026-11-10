@@ -1,9 +1,45 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:rucha_mobile/main.dart';
+import 'package:rucha_mobile/core/constants.dart';
+import 'package:rucha_mobile/models/activity.dart';
+import 'package:rucha_mobile/services/tracking_service.dart';
 
 void main() {
-  testWidgets('Rucha App boots up', (WidgetTester tester) async {
-    await tester.pumpWidget(const RuchaApp());
-    expect(find.text('RUCHA'), findsOneWidget);
+  test('RUCHA Core constants and Ethiopian cities are configured', () {
+    expect(RuchaConstants.cities.containsKey('addis'), isTrue);
+    expect(RuchaConstants.cities['addis']!.baseEle, equals(2355));
+    expect(RuchaConstants.holidays.isNotEmpty, isTrue);
+  });
+
+  test('Haversine distance and pace calculations work correctly', () {
+    final d = RuchaConstants.haversineDistance(9.0320, 38.7469, 9.0450, 38.7469);
+    expect(d, greaterThan(1000.0)); // > 1 km
+
+    final pace = RuchaConstants.paceFor(5.0, 1500); // 5km in 25 min = 300s/km (5:00/km)
+    expect(pace, equals(300.0));
+    expect(RuchaConstants.formatPace(pace), equals('05:00'));
+  });
+
+  test('TrackingService Kalman filter rejects poor accuracy fixes', () {
+    final tracker = TrackingService();
+    tracker.startRecording(title: 'Test Run');
+
+    // Add a coarse 2000m fix
+    final accepted = tracker.addGpsFix(
+      lat: 9.0320,
+      lng: 38.7469,
+      accuracy: 2000.0,
+    );
+    expect(accepted, isFalse);
+    expect(tracker.track.isEmpty, isTrue);
+    expect(tracker.totalDistanceKm, equals(0.0));
+
+    // Add a precise 8m fix
+    final accepted2 = tracker.addGpsFix(
+      lat: 9.0320,
+      lng: 38.7469,
+      accuracy: 8.0,
+    );
+    expect(accepted2, isTrue);
+    expect(tracker.track.length, equals(1));
   });
 }

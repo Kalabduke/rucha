@@ -7,7 +7,13 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Mobile</string>
+	<string>RUCHA</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RUCHA needs your precise location to track running and cycling routes and distance.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>RUCHA needs background location to record your activities while your phone is locked.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>RUCHA uses Bluetooth to connect heart rate monitors and cycling cadence sensors.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
