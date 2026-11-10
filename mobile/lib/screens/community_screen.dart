@@ -216,6 +216,15 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
                               } else {
                                 item.hasGivenKudos = true;
                                 item.kudosCount++;
+                                final cheer = RuchaConstants.kudosCheers[idx % RuchaConstants.kudosCheers.length];
+                                ScaffoldMessenger.of(context).clearSnackBars();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('${cheer['am']} · ${cheer['om']} (${cheer['en']})'),
+                                    duration: const Duration(seconds: 2),
+                                    backgroundColor: const Color(0xFF1C2433),
+                                  ),
+                                );
                               }
                             });
                           },

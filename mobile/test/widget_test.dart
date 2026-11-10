@@ -7,16 +7,23 @@ void main() {
   test('RUCHA Core constants and Ethiopian cities are configured', () {
     expect(RuchaConstants.cities.containsKey('addis'), isTrue);
     expect(RuchaConstants.cities['addis']!.baseEle, equals(2355));
+    expect(RuchaConstants.cities.containsKey('bekoji'), isTrue);
+    expect(RuchaConstants.cities['bekoji']!.baseEle, equals(2810));
     expect(RuchaConstants.holidays.isNotEmpty, isTrue);
   });
 
-  test('Haversine distance and pace calculations work correctly', () {
+  test('Haversine distance, pace, and altitude adjustment work correctly', () {
     final d = RuchaConstants.haversineDistance(9.0320, 38.7469, 9.0450, 38.7469);
     expect(d, greaterThan(1000.0)); // > 1 km
 
     final pace = RuchaConstants.paceFor(5.0, 1500); // 5km in 25 min = 300s/km (5:00/km)
     expect(pace, equals(300.0));
     expect(RuchaConstants.formatPace(pace), equals('05:00'));
+
+    // Sea-level equivalent pace in Addis Ababa (2,355m) should be faster (fewer seconds/km)
+    final seaLevelPace = RuchaConstants.seaLevelEquivalentPace(300.0, 2355.0);
+    expect(seaLevelPace, lessThan(300.0));
+    expect(seaLevelPace, greaterThan(260.0)); // ~4:40/km
   });
 
   test('TrackingService Kalman filter rejects poor accuracy fixes', () {

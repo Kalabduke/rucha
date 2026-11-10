@@ -34,6 +34,8 @@ class RuchaConstants {
     'gondar': City(id: 'gondar', name: 'Gondar', lat: 12.6075, lng: 37.4660, baseEle: 2133, eleSlope: 45, tag: 'Royal enclosure'),
     'mekelle': City(id: 'mekelle', name: 'Mekelle', lat: 13.4967, lng: 39.4753, baseEle: 2084, eleSlope: 35, tag: 'Northern highlands'),
     'harar': City(id: 'harar', name: 'Harar Jugol', lat: 9.3149, lng: 42.1288, baseEle: 1885, eleSlope: 28, tag: 'Walled historic city'),
+    'bekoji': City(id: 'bekoji', name: 'Bekoji', lat: 7.5333, lng: 39.2500, baseEle: 2810, eleSlope: 45, tag: 'Town of Runners · 2,810m'),
+    'sululta': City(id: 'sululta', name: 'Sululta', lat: 9.1833, lng: 38.7500, baseEle: 2750, eleSlope: 30, tag: 'National Distance Camp · 2,750m'),
   };
 
   // 14 Ethiopian Holidays
@@ -92,4 +94,22 @@ class RuchaConstants {
     final elevBonus = elevGain * 0.12;
     return max(0.0, (distanceKm * factor) + elevBonus);
   }
+
+  /// Calculates the sea-level equivalent pace (seconds/km) using the Bassett / Daniels high-altitude VO2 model.
+  /// Running at 2,400m+ in Ethiopia incurs a ~6% to 11% aerobic penalty.
+  static double seaLevelEquivalentPace(double paceSeconds, double altitudeMeters) {
+    if (paceSeconds <= 0 || altitudeMeters <= 500) return paceSeconds;
+    // Beyond 1500m, pace slows roughly 0.065% per 100m
+    final excessAlt = max(0.0, altitudeMeters - 1500.0);
+    final altitudePenaltyFactor = 1.0 + (excessAlt / 100.0) * 0.0075 + (min(1500.0, altitudeMeters) / 100.0) * 0.002;
+    return paceSeconds / altitudePenaltyFactor;
+  }
+
+  // Authentic Ethiopian Kudos / Cheers in Amharic & Afaan Oromoo
+  static const List<Map<String, String>> kudosCheers = [
+    {'am': 'በርታ!', 'om': 'Jabaadhu!', 'en': 'Keep Pushing!'},
+    {'am': 'ጀግና!', 'om': 'Goota!', 'en': 'Warrior!'},
+    {'am': 'አይዞህ!', 'om': 'Cimi!', 'en': 'Stay Strong!'},
+    {'am': 'ፈጣን ነህ!', 'om': 'Ariifataa!', 'en': 'Fast Pace!'},
+  ];
 }
