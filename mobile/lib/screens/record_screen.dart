@@ -5,6 +5,7 @@ import '../services/tracking_service.dart';
 import '../services/api_service.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
+import '../models/legend_ghost.dart';
 import '../widgets/metric_card.dart';
 import '../widgets/split_table.dart';
 import '../widgets/osm_map_widget.dart';
@@ -19,6 +20,8 @@ class RecordScreen extends StatefulWidget {
 
 class _RecordScreenState extends State<RecordScreen> {
   final TextEditingController _nameController = TextEditingController();
+  LegendGhost? _selectedLegend = LegendGhost.all[0]; // Default: Abebe Bikila
+  int _lastNotifiedSplit = 0;
 
   @override
   void dispose() {
@@ -32,6 +35,39 @@ class _RecordScreenState extends State<RecordScreen> {
     final isRunning = tracking.status == RecordingStatus.running;
     final isPaused = tracking.status == RecordingStatus.paused;
     final isIdle = tracking.status == RecordingStatus.idle;
+
+    // Check for new kilometre split notification note
+    if (tracking.splits.length > _lastNotifiedSplit && _selectedLegend != null) {
+      _lastNotifiedSplit = tracking.splits.length;
+      final split = tracking.splits.last;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Text(_selectedLegend!.icon, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'KM ${split.km} Note: ${split.paceFormatted}/km vs ${_selectedLegend!.name} (${_selectedLegend!.targetPaceFormatted})',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 4),
+            backgroundColor: const Color(0xFF151B26),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: _selectedLegend!.accentColor.withValues(alpha: 0.5)),
+            ),
+          ),
+        );
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -137,6 +173,11 @@ class _RecordScreenState extends State<RecordScreen> {
                   isDarkMode: true,
                 ),
               ),
+
+              const SizedBox(height: 14),
+
+              // Ghost of Legends (Visual Benchmark Notes)
+              _buildGhostLegendSection(tracking),
 
               const SizedBox(height: 14),
 
@@ -302,6 +343,138 @@ class _RecordScreenState extends State<RecordScreen> {
     );
   }
 
+  Widget _buildGhostLegendSection(TrackingService tracking) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _selectedLegend != null
+              ? _selectedLegend!.accentColor.withValues(alpha: 0.4)
+              : RuchaTheme.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Text('⚔️', style: TextStyle(fontSize: 14)),
+                  SizedBox(width: 6),
+                  Text(
+                    'GHOST OF LEGENDS (BENCHMARK NOTE)',
+                    style: TextStyle(
+                      color: RuchaTheme.textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+              if (_selectedLegend != null)
+                Text(
+                  _selectedLegend!.amharicName,
+                  style: TextStyle(
+                    color: _selectedLegend!.accentColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Horizontal Legend Chip Selector
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _ghostChip(
+                  null,
+                  'None',
+                  _selectedLegend == null,
+                  RuchaTheme.textSecondary,
+                ),
+                for (final g in LegendGhost.all) ...[
+                  const SizedBox(width: 6),
+                  _ghostChip(
+                    g,
+                    '${g.icon} ${g.name} (${g.targetPaceFormatted})',
+                    _selectedLegend?.id == g.id,
+                    g.accentColor,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          if (_selectedLegend != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: _selectedLegend!.accentColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _selectedLegend!.accentColor.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    tracking.status == RecordingStatus.running
+                        ? CupertinoIcons.bolt_fill
+                        : CupertinoIcons.info_circle_fill,
+                    size: 16,
+                    color: _selectedLegend!.accentColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      tracking.status == RecordingStatus.running
+                          ? _selectedLegend!.getPaceDeltaNote(tracking.currentPace)
+                          : '${_selectedLegend!.note} · Visual pace notes appear during your run.',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _ghostChip(LegendGhost? legend, String label, bool isSelected, Color accent) {
+    return GestureDetector(
+      onTap: () => setState(() => _selectedLegend = legend),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? accent.withValues(alpha: 0.2) : RuchaTheme.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? accent : Colors.transparent),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : RuchaTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildGpsBadge(TrackingService tracking) {
     Color bg;
     Color fg;
@@ -372,10 +545,13 @@ class _RecordScreenState extends State<RecordScreen> {
     final api = context.read<ApiService>();
     api.saveActivity(act);
 
-    // Open Run Card Studio
+    // Open Run Card Studio with selected Ghost Legend note
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => RunCardScreen(activity: act),
+        builder: (_) => RunCardScreen(
+          activity: act,
+          ghostLegend: _selectedLegend,
+        ),
       ),
     );
   }

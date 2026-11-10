@@ -58,6 +58,7 @@ type User struct {
 	ID              string   `json:"id"`
 	Username        string   `json:"username"`
 	DisplayName     string   `json:"displayName"`
+	Phone           string   `json:"phone,omitempty"`
 	City            string   `json:"city"`
 	CreatedAt       string   `json:"createdAt"`
 	ProfileComplete bool     `json:"profileComplete"`
@@ -106,10 +107,10 @@ type FriendState struct {
 
 type Auth interface {
 	Kind() string
-	Register(username, password, displayName string, consent Consent) (User, string, error)
+	Register(username, password, displayName, phone string, consent Consent) (User, string, error)
 	Login(username, password string) (User, string, error)
 	SocialLogin(provider, providerID, displayName, usernameHint string) (User, string, error)
-	CompleteProfile(token, username, password, displayName string, consent Consent) (User, string, error)
+	CompleteProfile(token, username, password, displayName, phone string, consent Consent) (User, string, error)
 	AcceptConsent(token string, consent Consent) (User, error)
 	UsernameAvailable(username string) (bool, string)
 	Logout(token string) error
@@ -179,7 +180,7 @@ func checkUsername(username string) error {
 	return nil
 }
 
-func (a *authCore) Register(username, password, displayName string, consent Consent) (User, string, error) {
+func (a *authCore) Register(username, password, displayName, phone string, consent Consent) (User, string, error) {
 	username = normUsername(username)
 	if err := checkUsername(username); err != nil {
 		return User{}, "", err
@@ -206,7 +207,7 @@ func (a *authCore) Register(username, password, displayName string, consent Cons
 	}
 	stamp := nowISO()
 	u := &userRecord{
-		User: User{ID: newID("usr"), Username: username, DisplayName: name,
+		User: User{ID: newID("usr"), Username: username, DisplayName: name, Phone: strings.TrimSpace(phone),
 			City: "Addis Ababa", CreatedAt: stamp, ProfileComplete: true, HasPassword: true,
 			PrivacyVersion: consent.PrivacyVersion, PrivacyAt: stamp,
 			TermsVersion: consent.TermsVersion, TermsAt: stamp},
@@ -267,7 +268,7 @@ func (a *authCore) Me(token string) (User, error) {
 
 // CompleteProfile turns a verified social sign-in into a full RUCHA account.
 // The chosen username is permanent and is enforced as unique by the store.
-func (a *authCore) CompleteProfile(token, username, password, displayName string, consent Consent) (User, string, error) {
+func (a *authCore) CompleteProfile(token, username, password, displayName, phone string, consent Consent) (User, string, error) {
 	u, err := a.d.sessionUser(token)
 	if err != nil || u == nil {
 		return User{}, "", errNotAuthed
@@ -302,6 +303,7 @@ func (a *authCore) CompleteProfile(token, username, password, displayName string
 	stamp := nowISO()
 	u.Username = username
 	u.DisplayName = name
+	u.Phone = strings.TrimSpace(phone)
 	u.Hash = hash
 	u.HasPassword = true
 	u.ProfileComplete = true
@@ -605,6 +607,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		Username       string `json:"username"`
 		Password       string `json:"password"`
 		DisplayName    string `json:"displayName"`
+		Phone          string `json:"phone"`
 		AcceptPrivacy  bool   `json:"acceptPrivacy"`
 		AcceptTerms    bool   `json:"acceptTerms"`
 		PrivacyVersion string `json:"privacyVersion"`
@@ -614,7 +617,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid JSON")
 		return
 	}
-	u, tok, err := auth.Register(b.Username, b.Password, b.DisplayName, Consent{
+	u, tok, err := auth.Register(b.Username, b.Password, b.DisplayName, b.Phone, Consent{
 		AcceptPrivacy: b.AcceptPrivacy, AcceptTerms: b.AcceptTerms,
 		PrivacyVersion: b.PrivacyVersion, TermsVersion: b.TermsVersion,
 	})
@@ -639,6 +642,7 @@ func handleCompleteProfile(w http.ResponseWriter, r *http.Request) {
 		Username       string `json:"username"`
 		Password       string `json:"password"`
 		DisplayName    string `json:"displayName"`
+		Phone          string `json:"phone"`
 		AcceptPrivacy  bool   `json:"acceptPrivacy"`
 		AcceptTerms    bool   `json:"acceptTerms"`
 		PrivacyVersion string `json:"privacyVersion"`
@@ -648,7 +652,7 @@ func handleCompleteProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid JSON")
 		return
 	}
-	u, token, err := auth.CompleteProfile(tok, b.Username, b.Password, b.DisplayName, Consent{
+	u, token, err := auth.CompleteProfile(tok, b.Username, b.Password, b.DisplayName, b.Phone, Consent{
 		AcceptPrivacy: b.AcceptPrivacy, AcceptTerms: b.AcceptTerms,
 		PrivacyVersion: b.PrivacyVersion, TermsVersion: b.TermsVersion,
 	})

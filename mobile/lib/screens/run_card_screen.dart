@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../models/activity.dart';
+import '../models/legend_ghost.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../widgets/route_painter.dart';
@@ -9,8 +10,9 @@ enum CardThemeStyle { sunset, midnight, ember }
 
 class RunCardScreen extends StatefulWidget {
   final Activity activity;
+  final LegendGhost? ghostLegend;
 
-  const RunCardScreen({super.key, required this.activity});
+  const RunCardScreen({super.key, required this.activity, this.ghostLegend});
 
   @override
   State<RunCardScreen> createState() => _RunCardScreenState();
@@ -134,6 +136,32 @@ class _RunCardScreenState extends State<RunCardScreen> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  if (widget.ghostLegend != null) ...[
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.45),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: widget.ghostLegend!.accentColor.withOpacity(0.6)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(widget.ghostLegend!.icon, style: const TextStyle(fontSize: 14)),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Paced vs ${widget.ghostLegend!.name} (${widget.ghostLegend!.targetPaceFormatted})',
+                                            style: TextStyle(
+                                              color: widget.ghostLegend!.accentColor,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   Text(
                                     widget.activity.title,
                                     style: const TextStyle(

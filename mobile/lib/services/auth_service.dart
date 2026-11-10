@@ -310,6 +310,7 @@ class AuthService extends ChangeNotifier {
     String username,
     String password,
     String displayName, {
+    String phoneNumber = '',
     bool acceptPrivacy = true,
     bool acceptTerms = true,
   }) async {
@@ -323,6 +324,7 @@ class AuthService extends ChangeNotifier {
           'username': username.trim().toLowerCase(),
           'password': password,
           'displayName': displayName.trim().isEmpty ? username.trim() : displayName.trim(),
+          'phone': phoneNumber.trim(),
           'acceptPrivacy': acceptPrivacy,
           'acceptTerms': acceptTerms,
           'privacyVersion': _config.privacyVersion,
@@ -350,6 +352,7 @@ class AuthService extends ChangeNotifier {
         id: 'usr_local_${DateTime.now().millisecondsSinceEpoch}',
         username: username.trim().toLowerCase(),
         displayName: displayName.trim().isEmpty ? username.trim() : displayName.trim(),
+        phoneNumber: phoneNumber.trim(),
         createdAt: stamp,
         privacyVersion: _config.privacyVersion,
         termsVersion: _config.termsVersion,
@@ -397,6 +400,7 @@ class AuthService extends ChangeNotifier {
     String username,
     String password,
     String displayName, {
+    String phoneNumber = '',
     bool acceptPrivacy = true,
     bool acceptTerms = true,
   }) async {
@@ -416,6 +420,7 @@ class AuthService extends ChangeNotifier {
           'username': username.trim().toLowerCase(),
           'password': password,
           'displayName': displayName.trim().isEmpty ? username.trim() : displayName.trim(),
+          'phone': phoneNumber.trim(),
           'acceptPrivacy': acceptPrivacy,
           'acceptTerms': acceptTerms,
           'privacyVersion': _config.privacyVersion,

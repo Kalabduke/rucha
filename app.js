@@ -1261,10 +1261,11 @@
     if (skipped) { try { sessionStorage.setItem('rucha_skip_auth', '1'); } catch (e) {} }
   }
   function captureAuthForm() {
-    const d = $('#authDisplay'), un = $('#authUsername'), pw = $('#authPassword');
+    const d = $('#authDisplay'), un = $('#authUsername'), pw = $('#authPassword'), ph = $('#authPhone');
     if (d) auth.form.displayName = d.value;
     if (un) auth.form.username = un.value;
     if (pw) auth.form.password = pw.value;
+    if (ph) auth.form.phone = ph.value;
   }
   function authErr(msg) {
     auth.error = msg || ''; auth.busy = false;
@@ -1360,7 +1361,11 @@
   function displayFieldHtml() {
     return '<label class="auth-field" for="authDisplay"><span class="auth-label">Display name</span>' +
       '<div class="auth-input-wrap"><input id="authDisplay" class="auth-input" type="text" maxlength="48" autocomplete="name" placeholder="Your display name" value="' + esc(auth.form.displayName) + '"></div>' +
-      '<span class="auth-hint">This is the name your friends see on your profile and activities.</span></label>';
+      '<span class="auth-hint">This is the name your friends see on your profile and activities.</span></label>' +
+      '<label class="auth-field" for="authPhone"><span class="auth-label">Phone number <em>optional</em></span>' +
+      '<div class="auth-input-wrap has-prefix"><span class="auth-prefix">🇪🇹 +251</span>' +
+      '<input id="authPhone" class="auth-input" type="tel" inputmode="tel" placeholder="09... or 07..." value="' + esc(auth.form.phone || '') + '"></div>' +
+      '<span class="auth-hint">Ethio Telecom or Safaricom Ethiopia mobile.</span></label>';
   }
   function consentBlockHtml() {
     return '<label class="auth-consent"><input type="checkbox" id="authConsent"' + (auth.consent.acceptPrivacy && auth.consent.acceptTerms ? ' checked' : '') + '>' +
@@ -1608,6 +1613,7 @@
     }
     if (t.id === 'authPassword') { auth.form.password = t.value; return; }
     if (t.id === 'authDisplay') { auth.form.displayName = t.value; return; }
+    if (t.id === 'authPhone') { auth.form.phone = t.value; return; }
     if (t.id === 'authCode') {
       t.value = t.value.replace(/\D+/g, '').slice(0, 6);
       if (t.value.length === 6 && !auth.busy) submitCode();
@@ -1643,7 +1649,7 @@
     if (password.length < authMinPassword()) { authErr('Password must be at least ' + authMinPassword() + ' characters.'); return; }
     if (!auth.consent.acceptPrivacy || !auth.consent.acceptTerms) { authErr('Accept the Privacy Policy and Terms of Use to create an account.'); return; }
     auth.busy = true; auth.error = ''; setAuthBusy(true, 'Creating account…');
-    A.register(username, password, display, consentObject()).then(r => {
+    A.register(username, password, display, consentObject(), auth.form.phone).then(r => {
       auth.busy = false; auth.created = true; authDone(r);
     }).catch(e => {
       if (/taken/i.test(e.message)) { auth.usernameState = 'taken'; auth.usernameReason = e.message; refreshUsernameStatus(); }
@@ -1673,7 +1679,7 @@
     if (password.length < authMinPassword()) { authErr('Password must be at least ' + authMinPassword() + ' characters.'); return; }
     if (!auth.consent.acceptPrivacy || !auth.consent.acceptTerms) { authErr('Accept the Privacy Policy and Terms of Use to finish your account.'); return; }
     auth.busy = true; auth.error = ''; setAuthBusy(true, 'Finishing…');
-    A.completeProfile(username, password, display, consentObject()).then(r => {
+    A.completeProfile(username, password, display, consentObject(), auth.form.phone).then(r => {
       auth.busy = false; auth.created = true; authDone(r);
     }).catch(e => {
       if (/taken/i.test(e.message)) { auth.usernameState = 'taken'; auth.usernameReason = e.message; refreshUsernameStatus(); }

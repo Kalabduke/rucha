@@ -148,7 +148,7 @@
     try { localStorage.setItem('rucha_auth_v1_token', serverToken); } catch (e) {}
   }
 
-  function register(username, password, displayName, consent) {
+  function register(username, password, displayName, consent, phone) {
     username = norm(username);
     if (!USER_RE.test(username)) return no('Username must be 3-20 characters: letters, numbers and _ only.');
     if (!password || password.length < MIN_PASSWORD) return no('Password must be at least ' + MIN_PASSWORD + ' characters.');
@@ -157,7 +157,7 @@
     var cp = consentPayload(consent);
     if (mode === 'server') {
       return api('auth/register', 'POST', {
-        username: username, password: password, displayName: displayName,
+        username: username, password: password, displayName: displayName, phone: String(phone || '').trim(),
         acceptPrivacy: cp.acceptPrivacy, acceptTerms: cp.acceptTerms,
         privacyVersion: cp.privacyVersion, termsVersion: cp.termsVersion
       }).then(function (r) {
@@ -171,6 +171,7 @@
     return hashPassword(password, salt).then(function (hash) {
       var stamp = nowISO();
       var u = { id: uid('usr'), username: username, displayName: String(displayName || username).slice(0, 48),
+                phone: String(phone || '').trim(),
                 city: 'Addis Ababa', createdAt: stamp, hash: hash, salt: salt,
                 profileComplete: true, providers: [],
                 privacyVersion: cp.privacyVersion, privacyAcceptedAt: stamp,
@@ -249,7 +250,7 @@
     if (mode !== 'server') return no('Apple sign-in needs the RUCHA server.');
     return api('auth/apple', 'POST', { identityToken: identityToken, name: name || '' }).then(finishSignIn);
   }
-  function completeProfile(username, password, displayName, consent) {
+  function completeProfile(username, password, displayName, consent, phone) {
     if (mode !== 'server') return no('Finish your account on the RUCHA server.');
     username = norm(username);
     if (!USER_RE.test(username)) return no('Username must be 3-20 characters: letters, numbers and _ only.');
@@ -258,7 +259,7 @@
     if (cErr) return no(cErr);
     var cp = consentPayload(consent);
     return api('auth/complete', 'POST', {
-      username: username, password: password, displayName: displayName,
+      username: username, password: password, displayName: displayName, phone: String(phone || '').trim(),
       acceptPrivacy: cp.acceptPrivacy, acceptTerms: cp.acceptTerms,
       privacyVersion: cp.privacyVersion, termsVersion: cp.termsVersion
     }).then(function (r) {

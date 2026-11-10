@@ -29,6 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _displayNameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _tgCodeController = TextEditingController();
 
   bool _obscurePassword = true;
@@ -61,6 +62,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _displayNameController.dispose();
+    _phoneController.dispose();
     _tgCodeController.dispose();
     super.dispose();
   }
@@ -228,12 +230,14 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     final auth = Provider.of<AuthService>(context, listen: false);
+    final phone = _phoneController.text.trim();
     final res = _isLogin
         ? await auth.login(username, password)
         : await auth.register(
             username,
             password,
             displayName,
+            phoneNumber: phone,
             acceptPrivacy: _acceptPrivacy,
             acceptTerms: _acceptTerms,
           );
@@ -272,10 +276,12 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     final auth = Provider.of<AuthService>(context, listen: false);
+    final phone = _phoneController.text.trim();
     final res = await auth.completeProfile(
       username,
       password,
       displayName,
+      phoneNumber: phone,
       acceptPrivacy: _acceptPrivacy,
       acceptTerms: _acceptTerms,
     );
@@ -545,6 +551,44 @@ class _AuthScreenState extends State<AuthScreen> {
             style: const TextStyle(color: Colors.white, fontSize: 15),
             decoration: InputDecoration(
               hintText: 'e.g. Derartu Tulu',
+              hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+              filled: true,
+              fillColor: RuchaTheme.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Phone Number input
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Phone Number', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text('Ethio Telecom / Safaricom', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            style: const TextStyle(color: Colors.white, fontSize: 15),
+            decoration: InputDecoration(
+              prefixIcon: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('🇪🇹', style: TextStyle(fontSize: 16)),
+                    SizedBox(width: 6),
+                    Text('+251', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                    SizedBox(width: 8),
+                    Text('|', style: TextStyle(color: RuchaTheme.border)),
+                  ],
+                ),
+              ),
+              hintText: '09... or 07...',
               hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
               filled: true,
               fillColor: RuchaTheme.surface,
@@ -921,6 +965,38 @@ class _AuthScreenState extends State<AuthScreen> {
           controller: _displayNameController,
           style: const TextStyle(color: Colors.white, fontSize: 15),
           decoration: InputDecoration(
+            filled: true,
+            fillColor: RuchaTheme.surface,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: RuchaTheme.border)),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Phone Number
+        const Text('Phone Number', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            prefixIcon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('🇪🇹', style: TextStyle(fontSize: 16)),
+                  SizedBox(width: 6),
+                  Text('+251', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                  SizedBox(width: 8),
+                  Text('|', style: TextStyle(color: RuchaTheme.border)),
+                ],
+              ),
+            ),
+            hintText: '09... or 07...',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
             filled: true,
             fillColor: RuchaTheme.surface,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),

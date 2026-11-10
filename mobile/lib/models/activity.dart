@@ -1,3 +1,5 @@
+import '../core/constants.dart';
+
 class TrackPoint {
   final double lat;
   final double lng;
@@ -60,6 +62,8 @@ class ActivitySplit {
     required this.paceSeconds,
     required this.eleGain,
   });
+
+  String get paceFormatted => RuchaConstants.formatPace(paceSeconds);
 
   Map<String, dynamic> toJson() => {
     'km': km,

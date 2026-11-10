@@ -2,6 +2,7 @@ class User {
   final String id;
   final String username;
   final String displayName;
+  final String phoneNumber;
   final String city;
   final String createdAt;
   final bool profileComplete;
@@ -14,6 +15,7 @@ class User {
     required this.id,
     required this.username,
     required this.displayName,
+    this.phoneNumber = '',
     this.city = 'Addis Ababa',
     required this.createdAt,
     this.profileComplete = true,
@@ -36,6 +38,7 @@ class User {
       id: json['id']?.toString() ?? '',
       username: json['username']?.toString() ?? '',
       displayName: json['displayName']?.toString() ?? json['username']?.toString() ?? 'Athlete',
+      phoneNumber: json['phone']?.toString() ?? json['phoneNumber']?.toString() ?? '',
       city: json['city']?.toString() ?? 'Addis Ababa',
       createdAt: json['createdAt']?.toString() ?? DateTime.now().toIso8601String(),
       profileComplete: json['profileComplete'] != false,
@@ -50,6 +53,7 @@ class User {
     'id': id,
     'username': username,
     'displayName': displayName,
+    'phone': phoneNumber,
     'city': city,
     'createdAt': createdAt,
     'profileComplete': profileComplete,
