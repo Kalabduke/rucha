@@ -200,8 +200,8 @@ class AuthService extends ChangeNotifier {
           errStr.contains('not set up')) {
         return const TelegramStartResult(
           loginId: 'local_demo_tg',
-          bot: 'rucha_bot',
-          link: 'https://t.me/rucha_bot?start=local_demo_tg',
+          bot: 'ruchaabot',
+          link: 'https://t.me/ruchaabot?start=local_demo_tg',
         );
       }
       rethrow;

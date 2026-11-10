@@ -709,7 +709,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     }
                   },
                   icon: const Icon(CupertinoIcons.paperplane_fill, size: 18),
-                  label: Text('Open @${_tgBotName.isNotEmpty ? _tgBotName : "rucha_bot"} in Telegram'),
+                  label: Text('Open @${_tgBotName.isNotEmpty ? _tgBotName : "ruchaabot"} in Telegram'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2AABEE),
                     foregroundColor: Colors.white,
