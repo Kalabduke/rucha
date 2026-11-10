@@ -96,13 +96,7 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            const Row(
-              children: [
-                Text('Training Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                SizedBox(width: 8),
-                Text('እንቅስቃሴዎች', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
-              ],
-            ),
+            const Text('Training Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
         actions: [

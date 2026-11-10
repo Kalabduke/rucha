@@ -283,8 +283,8 @@ class _AuthScreenState extends State<AuthScreen> {
       setState(() => _errorMessage = 'This username is already taken. Choose another.');
       return;
     }
-    if (password.length < 5) {
-      setState(() => _errorMessage = 'Password must be at least 5 characters.');
+    if (password.length < 8) {
+      setState(() => _errorMessage = 'Password must be at least 8 characters.');
       return;
     }
     if (phone.isEmpty) {
@@ -348,7 +348,7 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             const SizedBox(width: 8),
             const Text(
-              'RUCHA · ሩጫ',
+              'RUCHA',
               style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.0, fontSize: 16),
             ),
           ],

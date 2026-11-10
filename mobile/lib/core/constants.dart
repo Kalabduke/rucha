@@ -105,11 +105,11 @@ class RuchaConstants {
     return paceSeconds / altitudePenaltyFactor;
   }
 
-  // Authentic Ethiopian Kudos / Cheers in Amharic & Afaan Oromoo
+  // Authentic Ethiopian Kudos / Cheers
   static const List<Map<String, String>> kudosCheers = [
-    {'am': 'በርታ!', 'om': 'Jabaadhu!', 'en': 'Keep Pushing!'},
-    {'am': 'ጀግና!', 'om': 'Goota!', 'en': 'Warrior!'},
-    {'am': 'አይዞህ!', 'om': 'Cimi!', 'en': 'Stay Strong!'},
-    {'am': 'ፈጣን ነህ!', 'om': 'Ariifataa!', 'en': 'Fast Pace!'},
+    {'en': 'Keep Pushing!'},
+    {'en': 'Warrior!'},
+    {'en': 'Stay Strong!'},
+    {'en': 'Fast Pace!'},
   ];
 }

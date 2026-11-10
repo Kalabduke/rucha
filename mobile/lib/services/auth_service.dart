@@ -25,7 +25,7 @@ class AuthConfig {
     this.appleClientId = '',
     this.privacyVersion = '2026-11-07',
     this.termsVersion = '2026-11-07',
-    this.minPassword = 5,
+    this.minPassword = 8,
   });
 
   factory AuthConfig.fromJson(Map<String, dynamic> json) => AuthConfig(
@@ -37,7 +37,7 @@ class AuthConfig {
     appleClientId: json['appleClientId']?.toString() ?? '',
     privacyVersion: json['privacyVersion']?.toString() ?? '2026-11-07',
     termsVersion: json['termsVersion']?.toString() ?? '2026-11-07',
-    minPassword: (json['minPassword'] as num?)?.toInt() ?? 5,
+    minPassword: (json['minPassword'] as num?)?.toInt() ?? 8,
   );
 }
 
@@ -273,7 +273,25 @@ class AuthService extends ChangeNotifier {
         return AuthResult(success: true, user: user, token: token);
       } else {
         notifyListeners();
-        // If server social login is not configured yet, create pending profile
+        if (kDebugMode) {
+          final localUser = User(
+            id: 'usr_google_${DateTime.now().millisecondsSinceEpoch}',
+            username: 'pending_google',
+            displayName: 'Google Athlete',
+            profileComplete: false,
+            hasPassword: false,
+            providers: const ['google'],
+            createdAt: DateTime.now().toIso8601String(),
+          );
+          await _saveSession(localUser, 'mock_token_google');
+          return AuthResult(success: true, user: localUser, token: 'mock_token_google');
+        }
+        return AuthResult(success: false, error: _extractError(res.body));
+      }
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      if (kDebugMode) {
         final localUser = User(
           id: 'usr_google_${DateTime.now().millisecondsSinceEpoch}',
           username: 'pending_google',
@@ -286,20 +304,7 @@ class AuthService extends ChangeNotifier {
         await _saveSession(localUser, 'mock_token_google');
         return AuthResult(success: true, user: localUser, token: 'mock_token_google');
       }
-    } catch (e) {
-      _isLoading = false;
-      notifyListeners();
-      final localUser = User(
-        id: 'usr_google_${DateTime.now().millisecondsSinceEpoch}',
-        username: 'pending_google',
-        displayName: 'Google Athlete',
-        profileComplete: false,
-        hasPassword: false,
-        providers: const ['google'],
-        createdAt: DateTime.now().toIso8601String(),
-      );
-      await _saveSession(localUser, 'mock_token_google');
-      return AuthResult(success: true, user: localUser, token: 'mock_token_google');
+      return AuthResult(success: false, error: e.toString().replaceAll('Exception: ', ''));
     }
   }
 
@@ -324,6 +329,25 @@ class AuthService extends ChangeNotifier {
         return AuthResult(success: true, user: user, token: token);
       } else {
         notifyListeners();
+        if (kDebugMode) {
+          final localUser = User(
+            id: 'usr_apple_${DateTime.now().millisecondsSinceEpoch}',
+            username: 'pending_apple',
+            displayName: name.isNotEmpty ? name : 'Apple Athlete',
+            profileComplete: false,
+            hasPassword: false,
+            providers: const ['apple'],
+            createdAt: DateTime.now().toIso8601String(),
+          );
+          await _saveSession(localUser, 'mock_token_apple');
+          return AuthResult(success: true, user: localUser, token: 'mock_token_apple');
+        }
+        return AuthResult(success: false, error: _extractError(res.body));
+      }
+    } catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      if (kDebugMode) {
         final localUser = User(
           id: 'usr_apple_${DateTime.now().millisecondsSinceEpoch}',
           username: 'pending_apple',
@@ -336,20 +360,7 @@ class AuthService extends ChangeNotifier {
         await _saveSession(localUser, 'mock_token_apple');
         return AuthResult(success: true, user: localUser, token: 'mock_token_apple');
       }
-    } catch (e) {
-      _isLoading = false;
-      notifyListeners();
-      final localUser = User(
-        id: 'usr_apple_${DateTime.now().millisecondsSinceEpoch}',
-        username: 'pending_apple',
-        displayName: name.isNotEmpty ? name : 'Apple Athlete',
-        profileComplete: false,
-        hasPassword: false,
-        providers: const ['apple'],
-        createdAt: DateTime.now().toIso8601String(),
-      );
-      await _saveSession(localUser, 'mock_token_apple');
-      return AuthResult(success: true, user: localUser, token: 'mock_token_apple');
+      return AuthResult(success: false, error: e.toString().replaceAll('Exception: ', ''));
     }
   }
 

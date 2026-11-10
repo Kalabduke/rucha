@@ -17,9 +17,8 @@ import 'profile_screen.dart';
 class _NavItem {
   final IconData icon;
   final String label;
-  final String amharic;
 
-  const _NavItem(this.icon, this.label, this.amharic);
+  const _NavItem(this.icon, this.label);
 }
 
 class MainNavigationScreen extends StatefulWidget {
@@ -33,15 +32,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
   static const List<_NavItem> _navItems = [
-    _NavItem(CupertinoIcons.house_fill, 'Home', 'ዳሽቦርድ'),
-    _NavItem(CupertinoIcons.compass, 'Explore', 'አስስ'),
-    _NavItem(Icons.radio_button_checked, 'Record', 'ቅረጽ'),
-    _NavItem(CupertinoIcons.list_bullet, 'Log', 'እንቅስቃሴ'),
-    _NavItem(CupertinoIcons.photo_on_rectangle, 'Gallery', 'ጋለሪ'),
-    _NavItem(Icons.terrain, 'Segments', 'ክፍሎች'),
-    _NavItem(CupertinoIcons.person_3_fill, 'Community', 'ማህበረሰብ'),
-    _NavItem(CupertinoIcons.flag_fill, 'Challenges', 'ሽልማቶች'),
-    _NavItem(CupertinoIcons.person_fill, 'Profile', 'መገለጫ'),
+    _NavItem(CupertinoIcons.house_fill, 'Home'),
+    _NavItem(CupertinoIcons.compass, 'Explore'),
+    _NavItem(Icons.radio_button_checked, 'Record'),
+    _NavItem(CupertinoIcons.list_bullet, 'Log'),
+    _NavItem(CupertinoIcons.photo_on_rectangle, 'Gallery'),
+    _NavItem(Icons.terrain, 'Segments'),
+    _NavItem(CupertinoIcons.person_3_fill, 'Community'),
+    _NavItem(CupertinoIcons.flag_fill, 'Challenges'),
+    _NavItem(CupertinoIcons.person_fill, 'Profile'),
   ];
 
   void _showMoreHubSheet() {
@@ -74,7 +73,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   children: [
                     Text('RUCHA Hub', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
                     SizedBox(width: 8),
-                    Text('የሩጫ ክፍሎች', style: TextStyle(color: RuchaTheme.accentGold, fontSize: 12, fontWeight: FontWeight.w700)),
+                    Text('Athlete Features', style: TextStyle(color: RuchaTheme.accentGold, fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -87,7 +86,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         icon: CupertinoIcons.photo_on_rectangle,
                         color: RuchaTheme.accentCoral,
                         title: 'Run Card Gallery',
-                        sub: 'ጋለሪ ስቱዲዮ',
+                        sub: 'Studio & Share',
                         index: 4,
                       ),
                     ),
@@ -97,7 +96,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         icon: Icons.terrain,
                         color: RuchaTheme.accentGreen,
                         title: 'Segments & KOMs',
-                        sub: 'የተራራ ክፍሎች',
+                        sub: 'Hill Climbs',
                         index: 5,
                       ),
                     ),
@@ -111,7 +110,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         icon: CupertinoIcons.flag_fill,
                         color: RuchaTheme.accentGold,
                         title: 'Challenges & Prizes',
-                        sub: 'ውድድሮችና ሽልማቶች',
+                        sub: 'Duels & Races',
                         index: 7,
                       ),
                     ),
@@ -121,7 +120,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         icon: CupertinoIcons.list_bullet,
                         color: Colors.blueAccent,
                         title: 'Training Log',
-                        sub: 'የሩጫ ታሪክ',
+                        sub: 'Activity History',
                         index: 3,
                       ),
                     ),
@@ -132,7 +131,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   icon: CupertinoIcons.person_fill,
                   color: Colors.purpleAccent,
                   title: 'Athlete Profile & Settings',
-                  sub: 'የግል መገለጫና ማስተካከያ',
+                  sub: 'Profile & Preferences',
                   index: 8,
                 ),
               ],
@@ -280,7 +279,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'የኢትዮጵያ ሩጫ',
+                                  'Highland Running',
                                   style: TextStyle(
                                     color: RuchaTheme.textSecondary,
                                     fontSize: 9,
@@ -342,13 +341,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                       ),
                                     ),
                                   ),
-                                  Text(
-                                    item.amharic,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: isSelected ? RuchaTheme.accentGold : RuchaTheme.textSecondary.withOpacity(0.6),
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
@@ -403,26 +395,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               child: const Icon(CupertinoIcons.flame_fill, size: 16, color: Colors.white),
             ),
             const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+            Row(
               children: [
-                Row(
-                  children: [
-                    const Text(
-                      'RUCHA',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _navItems[_currentIndex].label,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: RuchaTheme.accentGreen),
-                    ),
-                  ],
+                const Text(
+                  'RUCHA',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5),
                 ),
+                const SizedBox(width: 8),
                 Text(
-                  _navItems[_currentIndex].amharic,
-                  style: const TextStyle(fontSize: 10, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600),
+                  _navItems[_currentIndex].label,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: RuchaTheme.accentGreen),
                 ),
               ],
             ),
@@ -547,13 +529,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         fontSize: 14,
                       ),
                     ),
-                    trailing: Text(
-                      item.amharic,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isSelected ? RuchaTheme.accentGold : RuchaTheme.textSecondary.withOpacity(0.6),
-                      ),
-                    ),
                     selected: isSelected,
                     selectedTileColor: RuchaTheme.accentGreen.withOpacity(0.12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -576,7 +551,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 children: [
                   Icon(Icons.circle, size: 8, color: RuchaTheme.accentGreen),
                   SizedBox(width: 8),
-                  Text('RUCHA · የኢትዮጵያ ሩጫ', style: TextStyle(fontSize: 11, color: RuchaTheme.textSecondary)),
+                  Text('RUCHA · Athlete Community', style: TextStyle(fontSize: 11, color: RuchaTheme.textSecondary)),
                 ],
               ),
             ),

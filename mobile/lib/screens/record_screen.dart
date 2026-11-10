@@ -378,7 +378,7 @@ class _RecordScreenState extends State<RecordScreen> {
               ),
               if (_selectedLegend != null)
                 Text(
-                  _selectedLegend!.amharicName,
+                  _selectedLegend!.title,
                   style: TextStyle(
                     color: _selectedLegend!.accentColor,
                     fontSize: 11,

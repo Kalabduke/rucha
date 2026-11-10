@@ -75,7 +75,6 @@ void main() {
     expect(LegendGhost.all.length, greaterThanOrEqualTo(5));
     final abebe = LegendGhost.all.firstWhere((g) => g.id == 'abebe');
     expect(abebe.name, equals('Abebe Bikila'));
-    expect(abebe.amharicName, equals('አበበ ቢቂላ'));
     expect(abebe.targetPaceFormatted, equals('03:12/km'));
 
     // Test pace delta note

@@ -74,8 +74,10 @@ func botName() string {
 }
 
 func clientIP(r *http.Request) string {
-	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-		return strings.TrimSpace(strings.Split(xf, ",")[0])
+	if os.Getenv("TRUST_PROXY") == "true" {
+		if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
+			return strings.TrimSpace(strings.Split(xf, ",")[0])
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

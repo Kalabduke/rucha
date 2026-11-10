@@ -155,7 +155,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                                 ),
                               ),
                               Text(
-                                'ውድድር ወይም የሁለትዮሽ ፉክክር ፍጠር',
+                                'Set rules, distance goals & cash prizes',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: RuchaTheme.accentGold,
@@ -264,7 +264,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                               ),
                               child: Center(
                                 child: Text(
-                                  '1 vs 1 Duel (ፉክክር)',
+                                  '1 vs 1 Duel',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -441,7 +441,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                       child: isSubmitting
                           ? const CupertinoActivityIndicator(color: Colors.white)
                           : const Text(
-                              'Create Challenge (ውድድር ፍጠር)',
+                              'Create Challenge',
                               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                             ),
                     ),
@@ -473,13 +473,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            const Row(
-              children: [
-                Text('Challenges & Duels', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                SizedBox(width: 8),
-                Text('ውድድሮች', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
-              ],
-            ),
+            const Text('Challenges & Duels', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
         actions: [

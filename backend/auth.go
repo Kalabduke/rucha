@@ -16,7 +16,7 @@ import (
 var auth Auth
 
 const (
-	minPasswordLength = 5
+	minPasswordLength = 8
 	privacyVersion    = "2026-11-07"
 	termsVersion      = "2026-11-07"
 )
@@ -34,7 +34,7 @@ var (
 	errUserTaken    = errors.New("That username is already taken")
 	errReservedName = errors.New("That username is reserved")
 	errBadUsername  = errors.New("Username must be 3-20 characters: letters, numbers and _ only")
-	errBadPassword  = errors.New("Password must be at least 5 characters")
+	errBadPassword  = errors.New("Password must be at least 8 characters")
 	errBadCreds     = errors.New("Wrong username or password")
 	errNoUser       = errors.New("User not found")
 	errNotAuthed    = errors.New("Sign in required")
@@ -404,7 +404,11 @@ func (a *authCore) Respond(userID, edgeID, action string) error {
 	return errors.New("Action must be accept or decline")
 }
 
-func (a *authCore) RemoveFriend(userID, otherID string) error {
+func (a *authCore) RemoveFriend(userID, otherIdentifier string) error {
+	otherID := otherIdentifier
+	if u, err := a.d.userByName(normUsername(otherIdentifier)); err == nil && u != nil {
+		otherID = u.ID
+	}
 	e, err := a.d.findEdge(userID, otherID)
 	if err != nil || e == nil {
 		return errNoRequest
@@ -595,12 +599,16 @@ func tokenFrom(r *http.Request) string {
 	if strings.HasPrefix(strings.ToLower(h), "bearer ") {
 		return strings.TrimSpace(h[7:])
 	}
-	return r.URL.Query().Get("token")
+	return ""
 }
 
 func handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		fail(w, 405, "POST only")
+		return
+	}
+	if !allowed("register:" + clientIP(r)) {
+		fail(w, 429, "Too many registration attempts. Please wait a few minutes.")
 		return
 	}
 	var b struct {
@@ -704,6 +712,10 @@ func handleUsernameCheck(w http.ResponseWriter, r *http.Request) {
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		fail(w, 405, "POST only")
+		return
+	}
+	if !allowed("login:" + clientIP(r)) {
+		fail(w, 429, "Too many login attempts. Please wait a few minutes.")
 		return
 	}
 	var b struct {

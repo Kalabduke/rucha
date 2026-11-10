@@ -237,13 +237,7 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
               ],
             ),
             const SizedBox(height: 6),
-            const Row(
-              children: [
-                Text('Community', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                SizedBox(width: 8),
-                Text('ማህበረሰብ', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
-              ],
-            ),
+            const Text('Community', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
         bottom: TabBar(
@@ -347,7 +341,7 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
                       color: item.hasGivenKudos ? RuchaTheme.accentCoral : RuchaTheme.textSecondary,
                     ),
                     label: Text(
-                      item.hasGivenKudos ? 'Kudos given (በርታ!)' : 'Give Kudos',
+                      item.hasGivenKudos ? 'Kudos given' : 'Give Kudos',
                       style: TextStyle(
                         color: item.hasGivenKudos ? RuchaTheme.accentCoral : RuchaTheme.textSecondary,
                         fontSize: 12,

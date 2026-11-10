@@ -97,13 +97,7 @@ class _SegmentsScreenState extends State<SegmentsScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            const Row(
-              children: [
-                Text('Course Segments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                SizedBox(width: 8),
-                Text('የኮርስ ክፍሎች', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
-              ],
-            ),
+            const Text('Course Segments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
         actions: [

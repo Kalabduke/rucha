@@ -280,18 +280,35 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, g)
 	case http.MethodDelete:
+		v := currentViewer(tokenFrom(r))
+		if v.ID == "" {
+			fail(w, 401, errNotAuthed.Error())
+			return
+		}
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			fail(w, 400, "missing id")
 			return
 		}
-		v := currentViewer(tokenFrom(r))
-		list, _ := store.Gallery()
+		list, err := store.Gallery()
+		if err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		found := false
 		for _, g := range list {
-			if g.ID == id && g.OwnerID != "" && g.OwnerID != v.ID {
-				fail(w, 403, "only the owner can delete this card")
-				return
+			if g.ID == id {
+				found = true
+				if g.OwnerID != v.ID {
+					fail(w, 403, "only the owner can delete this card")
+					return
+				}
+				break
 			}
+		}
+		if !found {
+			fail(w, 404, "card not found")
+			return
 		}
 		if err := store.DeleteGallery(id); err != nil {
 			fail(w, 500, err.Error())

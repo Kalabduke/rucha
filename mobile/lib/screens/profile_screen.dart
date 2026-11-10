@@ -27,13 +27,7 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            const Row(
-              children: [
-                Text('Athlete Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                SizedBox(width: 8),
-                Text('መገለጫ', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
-              ],
-            ),
+            const Text('Athlete Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
         ),
         actions: [
