@@ -18,3 +18,9 @@ pgdata/
 Thumbs.db
 .idea/
 .vscode/
+
+# Flutter build artifacts
+.dart_tool/
+**/build/
+.flutter-plugins
+.flutter-plugins-dependencies
