@@ -22,11 +22,17 @@
       var f = JSON.parse(raw);
       if (!f || !isFinite(f.lat) || !isFinite(f.lng)) return null;
       if (!f.t || Date.now() - f.t > LAST_FIX_MAX_AGE) return null;
+      if (f.accuracy != null && f.accuracy > 50) return null; // Ignore coarse cached fixes
       return f;
     } catch (e) { return null; }
   }
   function saveLastFix(fix) {
-    try { if (global.localStorage) global.localStorage.setItem(LAST_FIX_KEY, JSON.stringify(fix)); } catch (e) {}
+    try {
+      // Only cache fixes with reasonable accuracy (under 50m).
+      // Never cache coarse cellular/approximate fixes (e.g. 2000m) which corrupt the initial position.
+      if (!fix || fix.accuracy == null || fix.accuracy > 50) return;
+      if (global.localStorage) global.localStorage.setItem(LAST_FIX_KEY, JSON.stringify(fix));
+    } catch (e) {}
   }
 
   var S = {
@@ -152,13 +158,13 @@
     // One-shot fix for the "check signal" action. Resolves with the first fix
     // (or a recent cached one) instead of waiting for a perfect accuracy.
     probe: function (timeoutMs) {
-      timeoutMs = timeoutMs || 8000;
+      timeoutMs = timeoutMs || 10000;
       return new Promise(function (resolve) {
         if (!S.gps.supported) { S.gps.error = 'This browser has no GPS support'; resolve(null); return; }
         function recent() {
-          return (S.gps.last && Date.now() - S.gps.last.t < 10 * 60 * 1000) ? S.gps.last : null;
+          return (S.gps.last && S.gps.last.accuracy != null && S.gps.last.accuracy <= 50 && Date.now() - S.gps.last.t < 10 * 60 * 1000) ? S.gps.last : null;
         }
-        // A watch that is already running keeps a fresh fix; reuse it.
+        // A watch that is already running keeps a fresh fix; reuse it if accurate.
         if (S.gps.watching && recent() && Date.now() - S.gps.last.t < 120000) { resolve(S.gps.last); return; }
         var done = false, timer;
         function finish(v) {
@@ -177,7 +183,7 @@
             S.gps.error = gpsErr(err);
             if (err && err.code === 1) S.gps.denied = true;
             finish(err && err.code === 1 ? null : recent());
-          }, { enableHighAccuracy: true, maximumAge: 30000, timeout: timeoutMs });
+          }, { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs });
         } catch (e) {
           S.gps.error = String(e);
           finish(recent());
@@ -206,7 +212,7 @@
           // later start can ask again (e.g. after the user changes the setting).
           if (err && err.code === 1) { S.gps.watching = false; S.gps.watchId = null; S.gps.denied = true; }
           if (S.gps.onError) S.gps.onError(S.gps.error, err && err.code);
-        }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
         S.gps.watching = true;
         wake.request();
         return true;

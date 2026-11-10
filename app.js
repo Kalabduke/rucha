@@ -2292,8 +2292,9 @@
   function gpsQuality(acc) {
     if (acc == null) return 'weak';
     if (acc <= 12) return 'good';
-    if (acc <= 25) return 'ok';
-    return 'weak';
+    if (acc <= 30) return 'ok';
+    if (acc <= 60) return 'weak';
+    return 'coarse';
   }
   function fixState(fix) {
     if (!fix) return 'searching';
@@ -2303,10 +2304,20 @@
   function refreshGpsPill() {
     const el = $('#gpsPill'); if (!el) return;
     const r = state.rec;
-    const map = { idle: ['', 'GPS off'], searching: ['', 'Searching for GPS…'], good: ['green', 'GPS strong'], ok: ['green', 'GPS ok'], weak: ['', 'GPS weak'], cached: ['', 'Last GPS fix'], lost: ['', 'No GPS signal'] };
+    const map = {
+      idle: ['', 'GPS off'],
+      searching: ['', 'Searching for GPS…'],
+      good: ['green', 'GPS strong'],
+      ok: ['green', 'GPS ok'],
+      weak: ['accent', 'GPS weak'],
+      coarse: ['gold', 'Approximate GPS'],
+      cached: ['', 'Last GPS fix'],
+      lost: ['', 'No GPS signal']
+    };
     const m = map[r.gpsState] || map.idle;
     el.className = 'pill ' + m[0];
-    el.textContent = m[1] + (r.gpsAccuracy != null && r.gpsState !== 'lost' && r.gpsState !== 'idle' ? ' · ±' + Math.round(r.gpsAccuracy) + ' m' : '');
+    const accStr = (r.gpsAccuracy != null && r.gpsState !== 'lost' && r.gpsState !== 'idle') ? ' · ±' + Math.round(r.gpsAccuracy) + ' m' : '';
+    el.textContent = m[1] + accStr;
   }
   function bleFail(kind) {
     const e = SENS()[kind].status().error;
@@ -2376,6 +2387,19 @@
     r.gpsState = 'searching'; refreshGpsPill();
     return SENS().gps.start(applyGpsFix, gpsWatchError);
   }
+  let lastGpsWarnTime = 0;
+  function warnCoarseGps(acc) {
+    const now = Date.now();
+    if (now - lastGpsWarnTime < 9000) return;
+    lastGpsWarnTime = now;
+    const rounded = Math.round(acc || 0);
+    if (acc > 150) {
+      toast('GPS is approximate (±' + rounded + ' m). In browser settings, turn ON "Precise Location" and step outdoors.');
+    } else {
+      toast('Acquiring satellite lock (±' + rounded + ' m). Distance will record once under ±45 m.');
+    }
+  }
+
   function applyGpsFix(fix) {
     const r = state.rec;
     if (!isFinite(fix.lat) || !isFinite(fix.lng)) return;
@@ -2401,7 +2425,13 @@
       return;
     }
     const res = r.filter.push(fix);
-    if (!res.accept) { if (state.mapEngine) followUser(fix); return; }
+    if (!res.accept) {
+      if (state.mapEngine) followUser(fix);
+      if (res.reason === 'accuracy') {
+        warnCoarseGps(fix.accuracy);
+      }
+      return;
+    }
     const pt = res.point, tr = r.realTrack, prev = tr[tr.length - 1];
     const baseEle = (D.CITIES[state.city] || D.CITIES.addis).baseEle;
     const ele = pt.ele != null ? pt.ele : (prev ? prev.ele : baseEle);
@@ -3782,7 +3812,11 @@
       applyGpsFix(seed);
       seeded = true;
     }
-    toast(seeded ? 'Recording started.' : 'Recording started. Waiting for your first GPS point.');
+    if (seed && seed.accuracy != null && seed.accuracy > 45) {
+      toast('GPS is currently approximate (±' + Math.round(seed.accuracy) + ' m). Distance will record once satellite lock is acquired outdoors.');
+    } else {
+      toast(seeded ? 'Recording started.' : 'Recording started. Waiting for satellite GPS lock.');
+    }
     loopRecorder();
   }
   function loopRecorder() {
