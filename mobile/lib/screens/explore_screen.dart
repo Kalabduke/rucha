@@ -32,7 +32,26 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Explore · ${city.name}'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Text('Explore · ${city.name}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(width: 8),
+                const Text('አስስ', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+        ),
         actions: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

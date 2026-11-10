@@ -41,6 +41,7 @@ class TrackingService extends ChangeNotifier {
   double? _simLat;
   double? _simLng;
   double? _simEle;
+  double _simAngle = 0.0;
 
   // Kalman smoothing variables
   double? _sLat;
@@ -132,9 +133,11 @@ class TrackingService extends ChangeNotifier {
         _currentPace = RuchaConstants.paceFor(_totalDistanceKm, _elapsedSeconds);
         _calories = RuchaConstants.caloriesFor(_totalDistanceKm, _elapsedSeconds, _elevationGain, _activityType);
 
-        // If no real hardware fix has arrived yet or running in simulator/desktop,
-        // advance with realistic trail movement so metrics always update smoothly!
-        if (!_hasRealGpsFix && _elapsedSeconds > 2) {
+        // On mobile devices (Android/iOS), NEVER inject synthetic points!
+        // Real athletes must strictly record their genuine hardware GPS trail.
+        // Only run gentle curved trail simulation on desktop/Linux developer environments without GPS.
+        final isMobileDevice = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+        if (!isMobileDevice && !_hasRealGpsFix && _elapsedSeconds > 2) {
           _simulateStep();
         }
 
@@ -186,12 +189,13 @@ class TrackingService extends ChangeNotifier {
   void _simulateStep() {
     if (_simLat == null || _simLng == null || _simEle == null) return;
     final speedMps = _activityType == 'ride' ? 6.5 : 3.0; // 3 m/s = 5:33/km
-    final deltaLat = (speedMps / 111111.0);
-    final deltaLng = (speedMps / (111111.0 * cos(_simLat! * pi / 180.0)));
+    _simAngle += 0.08; // Natural meandering curve like real trails, never a rigid diagonal
+    final deltaLat = (speedMps / 111111.0) * cos(_simAngle);
+    final deltaLng = (speedMps / (111111.0 * cos(_simLat! * pi / 180.0))) * sin(_simAngle);
 
-    _simLat = _simLat! + deltaLat * 0.7;
-    _simLng = _simLng! + deltaLng * 0.7;
-    _simEle = _simEle! + 0.3;
+    _simLat = _simLat! + deltaLat;
+    _simLng = _simLng! + deltaLng;
+    _simEle = _simEle! + sin(_simAngle * 2) * 0.4;
 
     addGpsFix(
       lat: _simLat!,

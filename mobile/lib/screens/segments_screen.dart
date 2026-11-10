@@ -86,7 +86,26 @@ class _SegmentsScreenState extends State<SegmentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Course Segments'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Row(
+              children: [
+                Text('Course Segments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                SizedBox(width: 8),
+                Text('የኮርስ ክፍሎች', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(CupertinoIcons.add_circled, color: RuchaTheme.accentGreen),

@@ -10,6 +10,9 @@ class Challenge {
   final int prizeBirr;
   final String visibility;
   final bool isJoined;
+  final String? opponentName;
+  final String? opponentId;
+  final String? createdBy;
 
   Challenge({
     required this.id,
@@ -23,6 +26,9 @@ class Challenge {
     this.prizeBirr = 0,
     this.visibility = 'public',
     this.isJoined = false,
+    this.opponentName,
+    this.opponentId,
+    this.createdBy,
   });
 
   factory Challenge.fromJson(Map<String, dynamic> json) => Challenge(
@@ -32,11 +38,14 @@ class Challenge {
     kind: json['kind']?.toString() ?? 'route',
     mode: json['mode']?.toString() ?? 'open',
     targetKm: (json['targetKm'] as num?)?.toDouble(),
-    targetTime: (json['targetTime'] as num?)?.toInt(),
-    targetElev: (json['targetElev'] as num?)?.toDouble(),
-    prizeBirr: (json['prize'] as num?)?.toInt() ?? 0,
+    targetTime: (json['targetTime'] as num?)?.toInt() ?? (json['targetSeconds'] as num?)?.toInt(),
+    targetElev: (json['targetElev'] as num?)?.toDouble() ?? (json['targetElevationM'] as num?)?.toDouble(),
+    prizeBirr: (json['prizeBr'] as num?)?.toInt() ?? (json['prize'] as num?)?.toInt() ?? 0,
     visibility: json['visibility']?.toString() ?? 'public',
     isJoined: json['joined'] == true,
+    opponentName: json['opponentName']?.toString(),
+    opponentId: json['opponentId']?.toString(),
+    createdBy: json['createdBy']?.toString() ?? json['ownerName']?.toString(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -46,10 +55,14 @@ class Challenge {
     'kind': kind,
     'mode': mode,
     if (targetKm != null) 'targetKm': targetKm,
-    if (targetTime != null) 'targetTime': targetTime,
-    if (targetElev != null) 'targetElev': targetElev,
+    if (targetTime != null) 'targetSeconds': targetTime,
+    if (targetElev != null) 'targetElevationM': targetElev?.toInt(),
+    'prizeBr': prizeBirr,
     'prize': prizeBirr,
     'visibility': visibility,
     'joined': isJoined,
+    if (opponentName != null) 'opponentName': opponentName,
+    if (opponentId != null) 'opponentId': opponentId,
+    if (createdBy != null) 'createdBy': createdBy,
   };
 }

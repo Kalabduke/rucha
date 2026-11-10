@@ -68,4 +68,36 @@ class ApiService {
     } catch (_) {}
     return [];
   }
+
+  Future<Challenge?> createChallenge(Map<String, dynamic> challengeData) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/challenges'),
+        headers: _headers,
+        body: jsonEncode(challengeData),
+      ).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final decoded = jsonDecode(res.body);
+        return Challenge.fromJson(decoded as Map<String, dynamic>);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> joinChallenge(String challengeId, {String? athleteId, String? athleteName}) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/challenges/join'),
+        headers: _headers,
+        body: jsonEncode({
+          'challengeId': challengeId,
+          'athleteId': athleteId ?? '',
+          'athleteName': athleteName ?? '',
+        }),
+      ).timeout(const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

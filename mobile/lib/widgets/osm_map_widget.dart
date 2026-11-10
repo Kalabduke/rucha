@@ -191,6 +191,7 @@ class _OsmMapWidgetState extends State<OsmMapWidget> {
                         track: widget.track,
                         toScreen: (lat, lng) => _geoToScreen(lat, lng, z, size),
                         routeColor: widget.routeColor,
+                        isLiveRecording: widget.currentPosition != null,
                       ),
                     ),
                   ),
@@ -305,57 +306,137 @@ class _OsmRoutePainter extends CustomPainter {
   final List<TrackPoint> track;
   final Offset Function(double lat, double lng) toScreen;
   final Color routeColor;
+  final bool isLiveRecording;
 
   _OsmRoutePainter({
     required this.track,
     required this.toScreen,
     required this.routeColor,
+    this.isLiveRecording = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (track.isEmpty) return;
 
-    final path = Path();
-    final first = toScreen(track.first.lat, track.first.lng);
-    path.moveTo(first.dx, first.dy);
-
-    for (int i = 1; i < track.length; i++) {
-      final off = toScreen(track[i].lat, track[i].lng);
-      path.lineTo(off.dx, off.dy);
+    final screenPts = <Offset>[];
+    for (int i = 0; i < track.length; i++) {
+      screenPts.add(toScreen(track[i].lat, track[i].lng));
     }
 
-    // Outer Glow
+    final path = Path();
+    path.moveTo(screenPts[0].dx, screenPts[0].dy);
+    for (int i = 1; i < screenPts.length; i++) {
+      path.lineTo(screenPts[i].dx, screenPts[i].dy);
+    }
+
+    // 1. Outer Glow (Matches PWA app.js line 489: 11-13px wide, opacity 0.22)
     final glowPaint = Paint()
-      ..color = routeColor.withOpacity(0.3)
-      ..strokeWidth = 8.0
+      ..color = routeColor.withOpacity(0.22)
+      ..strokeWidth = 11.0
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     canvas.drawPath(path, glowPaint);
 
-    // Polyline
+    // 2. Vibrant Main Track Stroke (Matches PWA line 490: 3.6px wide, round cap)
     final linePaint = Paint()
       ..color = routeColor
-      ..strokeWidth = 3.5
+      ..strokeWidth = 3.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     canvas.drawPath(path, linePaint);
 
-    // Green Start Pin
+    // 3. Core High-Contrast Highlight (Matches PWA line 491: 1.2px white opacity 0.65)
+    final corePaint = Paint()
+      ..color = Colors.white.withOpacity(0.65)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawPath(path, corePaint);
+
+    // 4. Kilometer Milestone Badges (Matches PWA app.js lines 496-515)
+    if (track.isNotEmpty && track.last.d >= 1.0) {
+      final totalKm = track.last.d.floor();
+      final stepKm = totalKm > 18 ? 3 : (totalKm > 9 ? 2 : 1);
+      final textPainter = TextPainter(textDirection: TextDirection.ltr);
+
+      for (int k = stepKm; k <= totalKm; k += stepKm) {
+        int idx = -1;
+        for (int i = 1; i < track.length; i++) {
+          if (track[i].d >= k) {
+            idx = i;
+            break;
+          }
+        }
+        if (idx < 0) continue;
+        final pt = screenPts[idx];
+        if (pt.dx < 0 || pt.dx > size.width || pt.dy < 0 || pt.dy > size.height) continue;
+
+        // Dark badge background
+        final bgPaint = Paint()
+          ..color = const Color(0xFF151B26)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(pt, 8.5, bgPaint);
+
+        // Colored border
+        final borderPaint = Paint()
+          ..color = routeColor
+          ..strokeWidth = 1.8
+          ..style = PaintingStyle.stroke;
+        canvas.drawCircle(pt, 8.5, borderPaint);
+
+        // Milestone number
+        textPainter.text = TextSpan(
+          text: '$k',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 9.5,
+            fontWeight: FontWeight.w800,
+          ),
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(pt.dx - (textPainter.width / 2), pt.dy - (textPainter.height / 2)),
+        );
+      }
+    }
+
+    // 5. Start Pin (Green circle with white border)
+    final first = screenPts.first;
     final startPaint = Paint()
       ..color = RuchaTheme.accentGreen
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(first, 5.5, startPaint);
+    final startBorder = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(first, 6.5, startPaint);
+    canvas.drawCircle(first, 6.5, startBorder);
 
-    // Red/Gold Finish Pin
-    if (track.length > 1) {
-      final last = toScreen(track.last.lat, track.last.lng);
+    // 6. Finish / Current Pin (Pulsing radar ring if recording)
+    if (screenPts.length > 1) {
+      final last = screenPts.last;
+      if (isLiveRecording) {
+        final radarPaint = Paint()
+          ..color = routeColor.withOpacity(0.25)
+          ..strokeWidth = 2.5
+          ..style = PaintingStyle.stroke;
+        canvas.drawCircle(last, 13.0, radarPaint);
+      }
+
       final finishPaint = Paint()
-        ..color = RuchaTheme.accentGold
+        ..color = isLiveRecording ? RuchaTheme.accentCoral : RuchaTheme.accentGold
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(last, 5.5, finishPaint);
+      final finishBorder = Paint()
+        ..color = Colors.white
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(last, 6.5, finishPaint);
+      canvas.drawCircle(last, 6.5, finishBorder);
     }
   }
 

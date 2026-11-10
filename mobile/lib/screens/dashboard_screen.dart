@@ -11,8 +11,13 @@ import 'run_card_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onStartRecording;
+  final ValueChanged<int>? onNavigateTo;
 
-  const DashboardScreen({super.key, required this.onStartRecording});
+  const DashboardScreen({
+    super.key,
+    required this.onStartRecording,
+    this.onNavigateTo,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -171,6 +176,160 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ],
                   ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // RUCHA Hub: 1-click access to Gallery, Segments, Community, Challenges
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'RUCHA ATHLETE HUB',
+                      style: TextStyle(
+                        color: RuchaTheme.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    Text(
+                      'ሁሉንም ክፍሎች ይመልከቱ',
+                      style: TextStyle(
+                        color: RuchaTheme.accentGold.withOpacity(0.8),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => widget.onNavigateTo?.call(4), // Gallery
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: RuchaTheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: RuchaTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: RuchaTheme.accentCoral.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(CupertinoIcons.photo_on_rectangle, size: 16, color: RuchaTheme.accentCoral),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('Run Cards', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                              const Text('ጋለሪ ስቱዲዮ', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => widget.onNavigateTo?.call(5), // Segments
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: RuchaTheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: RuchaTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: RuchaTheme.accentGreen.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.terrain, size: 16, color: RuchaTheme.accentGreen),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('Segments', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                              const Text('የተራራ ክፍሎች', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => widget.onNavigateTo?.call(7), // Challenges
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: RuchaTheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: RuchaTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: RuchaTheme.accentGold.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(CupertinoIcons.flag_fill, size: 16, color: RuchaTheme.accentGold),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('Prizes', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                              const Text('ውድድሮች', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => widget.onNavigateTo?.call(6), // Community
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: RuchaTheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: RuchaTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueAccent.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(CupertinoIcons.person_3_fill, size: 16, color: Colors.blueAccent),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('Clubs', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                              const Text('ማህበረሰብ', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 20),

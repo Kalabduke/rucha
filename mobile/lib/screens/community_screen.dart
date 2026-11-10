@@ -226,7 +226,26 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Community'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Row(
+              children: [
+                Text('Community', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                SizedBox(width: 8),
+                Text('ማህበረሰብ', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+        ),
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: RuchaTheme.accentGreen,

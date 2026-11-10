@@ -83,10 +83,29 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Run Card Gallery'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Row(
+              children: [
+                Text('Run Card Gallery', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                SizedBox(width: 8),
+                Text('ጋለሪ ስቱዲዮ', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(CupertinoIcons.camera),
+            icon: const Icon(CupertinoIcons.camera_fill, color: RuchaTheme.accentGreen),
             tooltip: 'Create Card',
             onPressed: () => _openCardCreator(context),
           ),

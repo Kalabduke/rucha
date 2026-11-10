@@ -85,7 +85,26 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Training Log'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
+                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Row(
+              children: [
+                Text('Training Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                SizedBox(width: 8),
+                Text('እንቅስቃሴዎች', style: TextStyle(fontSize: 12, color: RuchaTheme.accentGold, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(CupertinoIcons.arrow_clockwise),
