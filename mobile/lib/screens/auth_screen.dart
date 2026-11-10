@@ -106,6 +106,16 @@ class _AuthScreenState extends State<AuthScreen> {
     });
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
+      final config = auth.config;
+
+      if (!config.telegram || config.telegramBot.isEmpty) {
+        setState(() {
+          _isBusy = false;
+          _errorMessage = 'Telegram sign-in is not configured on the RUCHA server yet. Set TELEGRAM_BOT_TOKEN in the backend .env file, or use Username & Password.';
+        });
+        return;
+      }
+
       final res = await auth.telegramStart();
       if (!mounted) return;
       setState(() {
@@ -170,19 +180,22 @@ class _AuthScreenState extends State<AuthScreen> {
       _errorMessage = '';
     });
     final auth = Provider.of<AuthService>(context, listen: false);
-    // In mobile/desktop clients, triggers standard OAuth or test credential
-    final res = await auth.googleSignIn('demo_google_token');
-    if (!mounted) return;
-    setState(() => _isBusy = false);
-    if (res.success && res.user != null) {
-      if (!res.user!.profileComplete) {
-        setState(() => _currentStep = AuthViewStep.completeProfile);
-      } else {
-        Navigator.of(context).pop(true);
-      }
-    } else {
-      setState(() => _errorMessage = res.error ?? 'Google sign-in could not be completed.');
+    final config = auth.config;
+
+    if (!config.google || config.googleId.isEmpty) {
+      setState(() {
+        _isBusy = false;
+        _errorMessage = 'Google sign-in is not configured on the RUCHA server yet. Use Username & Password to create your account.';
+      });
+      return;
     }
+
+    // TODO: Replace with google_sign_in package for production OAuth flow
+    // For now, show that it requires proper setup
+    setState(() {
+      _isBusy = false;
+      _errorMessage = 'Google sign-in requires the google_sign_in Flutter package with your OAuth Client ID. Use Username & Password for now.';
+    });
   }
 
   Future<void> _handleAppleSignIn() async {
@@ -191,18 +204,21 @@ class _AuthScreenState extends State<AuthScreen> {
       _errorMessage = '';
     });
     final auth = Provider.of<AuthService>(context, listen: false);
-    final res = await auth.appleSignIn('demo_apple_token');
-    if (!mounted) return;
-    setState(() => _isBusy = false);
-    if (res.success && res.user != null) {
-      if (!res.user!.profileComplete) {
-        setState(() => _currentStep = AuthViewStep.completeProfile);
-      } else {
-        Navigator.of(context).pop(true);
-      }
-    } else {
-      setState(() => _errorMessage = res.error ?? 'Apple sign-in could not be completed.');
+    final config = auth.config;
+
+    if (!config.apple || config.appleClientId.isEmpty) {
+      setState(() {
+        _isBusy = false;
+        _errorMessage = 'Apple sign-in is not configured on the RUCHA server yet. Use Username & Password to create your account.';
+      });
+      return;
     }
+
+    // TODO: Replace with sign_in_with_apple package for production flow
+    setState(() {
+      _isBusy = false;
+      _errorMessage = 'Apple sign-in requires the sign_in_with_apple Flutter package and an Apple Developer account. Use Username & Password for now.';
+    });
   }
 
   Future<void> _handleSubmitForm() async {

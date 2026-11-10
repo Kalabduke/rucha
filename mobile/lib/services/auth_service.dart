@@ -346,19 +346,29 @@ class AuthService extends ChangeNotifier {
       }
     } catch (e) {
       _isLoading = false;
-      // Offline fallback: create local user
-      final stamp = DateTime.now().toIso8601String();
-      final localUser = User(
-        id: 'usr_local_${DateTime.now().millisecondsSinceEpoch}',
-        username: username.trim().toLowerCase(),
-        displayName: displayName.trim().isEmpty ? username.trim() : displayName.trim(),
-        phoneNumber: phoneNumber.trim(),
-        createdAt: stamp,
-        privacyVersion: _config.privacyVersion,
-        termsVersion: _config.termsVersion,
-      );
-      await _saveSession(localUser, 'local_token_${DateTime.now().millisecondsSinceEpoch}');
-      return AuthResult(success: true, user: localUser, token: _sessionToken);
+      final msg = e.toString();
+      // Network-level failure: let user know the server is unreachable
+      if (msg.contains('Failed host lookup') ||
+          msg.contains('Connection refused') ||
+          msg.contains('SocketException') ||
+          msg.contains('TimeoutException') ||
+          msg.contains('HandshakeException') ||
+          msg.contains('Connection reset')) {
+        // Offline fallback: create local-only user so the app is still usable
+        final stamp = DateTime.now().toIso8601String();
+        final localUser = User(
+          id: 'usr_local_${DateTime.now().millisecondsSinceEpoch}',
+          username: username.trim().toLowerCase(),
+          displayName: displayName.trim().isEmpty ? username.trim() : displayName.trim(),
+          phoneNumber: phoneNumber.trim(),
+          createdAt: stamp,
+          privacyVersion: _config.privacyVersion,
+          termsVersion: _config.termsVersion,
+        );
+        await _saveSession(localUser, 'local_token_${DateTime.now().millisecondsSinceEpoch}');
+        return AuthResult(success: true, user: localUser, token: _sessionToken);
+      }
+      return AuthResult(success: false, error: msg.replaceAll('Exception: ', ''));
     }
   }
 
@@ -391,7 +401,19 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       notifyListeners();
-      return AuthResult(success: false, error: 'Wrong username or password.');
+      final msg = e.toString();
+      if (msg.contains('Failed host lookup') ||
+          msg.contains('Connection refused') ||
+          msg.contains('SocketException') ||
+          msg.contains('TimeoutException') ||
+          msg.contains('HandshakeException') ||
+          msg.contains('Connection reset')) {
+        return const AuthResult(
+          success: false,
+          error: 'Could not connect to the RUCHA server. Check your internet connection and try again.',
+        );
+      }
+      return const AuthResult(success: false, error: 'Wrong username or password.');
     }
   }
 
