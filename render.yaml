@@ -8,9 +8,6 @@ services:
     plan: free
     region: oregon
     healthCheckPath: /api/health
-    # Keep the free instance warm so it never cold-starts.
-    # Render's free web service spins down after 15 min idle;
-    # we ping /api/health from a cron job every 10 min to prevent that.
     envVars:
       - key: PORT
         value: "8081"
@@ -26,15 +23,6 @@ services:
         fromDatabase:
           name: rucha-db
           property: connectionString
-
-  # ── Keepalive cron — pings the API every 10 min so free tier never sleeps ──
-  - type: cron
-    name: rucha-keepalive
-    runtime: node
-    region: oregon
-    schedule: "*/10 * * * *"
-    buildCommand: "true"
-    startCommand: curl -fsS --max-time 10 https://rucha-api.onrender.com/api/health || exit 0
 
 databases:
   # ── PostgreSQL — free tier, 1 GB storage, never sleeps ─────────────────────
