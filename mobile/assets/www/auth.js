@@ -3,7 +3,7 @@
 
   var LS = 'rucha_auth_v1_';
   var USER_RE = /^[a-z0-9_]{3,20}$/;
-  var MIN_PASSWORD = 5;
+  var MIN_PASSWORD = 8;
   var PRIVACY_VERSION = '2026-11-07';
   var TERMS_VERSION = '2026-11-07';
   var CONSENT_KEY = 'rucha_consent_v1';

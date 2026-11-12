@@ -235,25 +235,44 @@
 
 
   function popularAreas(activities) {
-    const cells = new Map();
-    const add = (lat, lng) => {
-      if (!isFinite(lat) || !isFinite(lng)) return;
-      const la = Math.round(lat * 1000) / 1000, ln = Math.round(lng * 1000) / 1000;
-      const k = la.toFixed(3) + ',' + ln.toFixed(3);
-      if (!cells.has(k)) cells.set(k, { lat: la, lng: ln, count: 0 });
-      cells.get(k).count++;
-    };
+    // Discover training areas automatically: cluster activity starts that are
+    // within 500 m of each other, then name the cluster after the nearest
+    // well-known place. Activities without real coordinates are ignored; the
+    // app must never invent a popular area in the city centre.
+    const starts = [];
     (activities || []).forEach(a => {
-      const s = startOf(a);
-      add(s.lat, s.lng);
+      let lat = null, lng = null;
+      if (a.startLat != null && a.startLng != null) { lat = +a.startLat; lng = +a.startLng; }
+      else if (a.track && a.track.length) { lat = +a.track[0].lat; lng = +a.track[0].lng; }
+      if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;
+      starts.push({ lat: lat, lng: lng });
     });
+
+    const used = new Array(starts.length).fill(false);
     const out = [];
-    cells.forEach(c => {
-      const np = nearestPlace(c.lat, c.lng);
-      out.push({ lat: c.lat, lng: c.lng, runCount: c.count, name: np.name, city: np.city });
-    });
+    for (let i = 0; i < starts.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      const cluster = [starts[i]];
+      for (let j = i + 1; j < starts.length; j++) {
+        if (used[j]) continue;
+        if (haversine([starts[i].lat, starts[i].lng], [starts[j].lat, starts[j].lng]) <= 0.5) {
+          used[j] = true;
+          cluster.push(starts[j]);
+        }
+      }
+      let latSum = 0, lngSum = 0;
+      cluster.forEach(p => { latSum += p.lat; lngSum += p.lng; });
+      const lat = Math.round((latSum / cluster.length) * 100000) / 100000;
+      const lng = Math.round((lngSum / cluster.length) * 100000) / 100000;
+      const np = nearestPlace(lat, lng);
+      const name = np.distanceKm <= 2.5
+        ? np.name
+        : (np.distanceKm <= 40 ? np.city + ' training area' : 'Open country');
+      out.push({ lat: lat, lng: lng, runCount: cluster.length, name: name, city: np.city });
+    }
     out.sort((a, b) => b.runCount - a.runCount || a.name.localeCompare(b.name));
-    return out;
+    return out.slice(0, 12);
   }
 
   function hallOfFame(segments) {

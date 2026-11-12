@@ -1,25 +1,25 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../core/theme.dart';
 import '../services/auth_service.dart';
+import '../services/community_store.dart';
 import '../services/tracking_service.dart';
-import 'dashboard_screen.dart';
-import 'explore_screen.dart';
-import 'record_screen.dart';
-import 'activities_screen.dart';
-import 'gallery_screen.dart';
-import 'segments_screen.dart';
-import 'community_screen.dart';
-import 'challenges_screen.dart';
-import 'profile_screen.dart';
 import '../widgets/rucha_logo.dart';
+import 'activities_screen.dart';
+import 'challenges_screen.dart';
+import 'community_screen.dart';
+import 'explore_screen.dart';
+import 'gallery_screen.dart';
+import 'profile_screen.dart';
+import 'record_screen.dart';
 
 class _NavItem {
   final IconData icon;
   final String label;
-
-  const _NavItem(this.icon, this.label);
+  final String subtitle;
+  const _NavItem(this.icon, this.label, this.subtitle);
 }
 
 class MainNavigationScreen extends StatefulWidget {
@@ -32,176 +32,22 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
+  // ── Tab definitions (order = bottom bar order) ───────────────────────────
+  // Index 2 is the Record FAB — no screen change, just navigate to record.
   static const List<_NavItem> _navItems = [
-    _NavItem(CupertinoIcons.house_fill, 'Home'),
-    _NavItem(CupertinoIcons.compass, 'Explore'),
-    _NavItem(Icons.radio_button_checked, 'Record'),
-    _NavItem(CupertinoIcons.list_bullet, 'Log'),
-    _NavItem(CupertinoIcons.photo_on_rectangle, 'Gallery'),
-    _NavItem(Icons.terrain, 'Segments'),
-    _NavItem(CupertinoIcons.person_3_fill, 'Community'),
-    _NavItem(CupertinoIcons.flag_fill, 'Challenges'),
-    _NavItem(CupertinoIcons.person_fill, 'Profile'),
+    _NavItem(Icons.home_rounded, 'Home', 'Good morning, Athlete'),
+    _NavItem(Icons.explore_rounded, 'Explore', 'Find your next route'),
+    _NavItem(Icons.play_circle_fill_rounded, 'Record', 'Make your move'),
+    _NavItem(CupertinoIcons.flag_fill, 'Challenges', 'Compete & grow'),
+    _NavItem(Icons.photo_library_rounded, 'Gallery', 'Your run cards'),
+    _NavItem(Icons.groups_2_rounded, 'Community', 'Better, together'),
+    _NavItem(Icons.person_rounded, 'Profile', 'Make it yours'),
   ];
 
-  void _showMoreHubSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: RuchaTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: RuchaTheme.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Row(
-                  children: [
-                    Text('RUCHA Hub', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
-                    SizedBox(width: 8),
-                    Text('Athlete Features', style: TextStyle(color: RuchaTheme.accentGold, fontSize: 12, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Grid of options
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildHubSheetItem(
-                        icon: CupertinoIcons.photo_on_rectangle,
-                        color: RuchaTheme.accentCoral,
-                        title: 'Run Card Gallery',
-                        sub: 'Studio & Share',
-                        index: 4,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildHubSheetItem(
-                        icon: Icons.terrain,
-                        color: RuchaTheme.accentGreen,
-                        title: 'Segments & KOMs',
-                        sub: 'Hill Climbs',
-                        index: 5,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildHubSheetItem(
-                        icon: CupertinoIcons.flag_fill,
-                        color: RuchaTheme.accentGold,
-                        title: 'Challenges & Prizes',
-                        sub: 'Duels & Races',
-                        index: 7,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildHubSheetItem(
-                        icon: CupertinoIcons.list_bullet,
-                        color: Colors.blueAccent,
-                        title: 'Training Log',
-                        sub: 'Activity History',
-                        index: 3,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _buildHubSheetItem(
-                  icon: CupertinoIcons.person_fill,
-                  color: Colors.purpleAccent,
-                  title: 'Athlete Profile & Settings',
-                  sub: 'Profile & Preferences',
-                  index: 8,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHubSheetItem({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String sub,
-    required int index,
-  }) {
-    final isSelected = _currentIndex == index;
-    return InkWell(
-      onTap: () {
-        Navigator.pop(context);
-        setState(() => _currentIndex = index);
-      },
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.18) : RuchaTheme.surface2,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: isSelected ? color : RuchaTheme.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color, size: 18),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                      color: isSelected ? Colors.white : RuchaTheme.textPrimary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    sub,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isSelected ? color : RuchaTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _select(int index) {
+    if (index < 0 || index >= _navItems.length || index == _currentIndex)
+      return;
+    setState(() => _currentIndex = index);
   }
 
   @override
@@ -211,29 +57,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final isRecording = tracking.status == RecordingStatus.running;
 
     final screens = [
-      DashboardScreen(
-        onStartRecording: () => setState(() => _currentIndex = 2),
-        onNavigateTo: (idx) => setState(() => _currentIndex = idx),
-      ),
-      const ExploreScreen(),
+      // 0 – Home (Activities)
+      ActivitiesScreen(onStartRecording: () => _select(2)),
+      // 1 – Explore
+      ExploreScreen(onStartRecording: () => _select(2)),
+      // 2 – Record
       const RecordScreen(),
-      ActivitiesScreen(onStartRecording: () => setState(() => _currentIndex = 2)),
+      // 3 – Challenges
+      const ChallengesScreen(),
+      // 4 – Gallery
       const GalleryScreen(),
-      const SegmentsScreen(),
-      const CommunityScreen(),
-      ChallengesScreen(onStartRecording: () => setState(() => _currentIndex = 2)),
+      // 5 – Community
+      CommunityScreen(onStartRecording: () => _select(2)),
+      // 6 – Profile
       const ProfileScreen(),
     ];
 
     final isWide = MediaQuery.of(context).size.width >= 768;
 
+    // ── Wide layout (tablet / desktop): slim sidebar ─────────────────────
     if (isWide) {
-      // Desktop Sidebar layout (Fedora Linux, wide screens)
       return Scaffold(
         body: Row(
           children: [
             Container(
-              width: 230,
+              width: 220,
               decoration: const BoxDecoration(
                 color: RuchaTheme.surface,
                 border: Border(right: BorderSide(color: RuchaTheme.border)),
@@ -241,100 +89,98 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Top brand header with Ethiopian flag tricolor
                   Container(
                     padding: const EdgeInsets.fromLTRB(18, 22, 18, 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Ethiopian Flag Line (Green, Yellow, Red)
-                        Row(
-                          children: [
-                            Expanded(child: Container(height: 3, color: RuchaTheme.accentGreen)),
-                            Expanded(child: Container(height: 3, color: RuchaTheme.accentGold)),
-                            Expanded(child: Container(height: 3, color: RuchaTheme.accentRed)),
-                          ],
+                        Container(
+                          height: 2,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(colors: [
+                              RuchaTheme.accentGreen,
+                              RuchaTheme.accentGold,
+                              RuchaTheme.accentRed,
+                            ]),
+                          ),
                         ),
-                        const SizedBox(height: 14),
-                        Row(
+                        const SizedBox(height: 16),
+                        const Row(
                           children: [
-                            const RuchaLogo(size: 32, showText: false, showFlag: false),
-                            const SizedBox(width: 10),
-                            const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'RUCHA',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 17,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                Text(
-                                  'Highland Running',
-                                  style: TextStyle(
-                                    color: RuchaTheme.textSecondary,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
+                            RuchaLogo(
+                                size: 32, showText: false, showFlag: false),
+                            SizedBox(width: 10),
+                            Text('RUCHA',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 18,
+                                  letterSpacing: 0.5,
+                                )),
                           ],
                         ),
                       ],
                     ),
                   ),
                   const Divider(height: 1, color: RuchaTheme.border),
-                  // Sidebar navigation items
                   Expanded(
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: _navItems.length,
-                      itemBuilder: (context, i) {
-                        final item = _navItems[i];
-                        final isSelected = _currentIndex == i;
-                        final isRecord = i == 2;
+                      itemBuilder: (context, index) {
+                        final item = _navItems[index];
+                        final selected = _currentIndex == index;
                         return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 2),
                           child: InkWell(
-                            onTap: () => setState(() => _currentIndex = i),
-                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => _select(index),
+                            borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
                               decoration: BoxDecoration(
-                                color: isSelected
-                                    ? (isRecord ? RuchaTheme.accentRed.withOpacity(0.18) : RuchaTheme.accentGreen.withOpacity(0.18))
+                                color: selected
+                                    ? RuchaTheme.accent.withOpacity(0.12)
                                     : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: isSelected
-                                      ? (isRecord ? RuchaTheme.accentRed : RuchaTheme.accentGreen)
+                                  color: selected
+                                      ? RuchaTheme.accent.withOpacity(0.35)
                                       : Colors.transparent,
                                 ),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(
-                                    item.icon,
-                                    size: 18,
-                                    color: isSelected
-                                        ? (isRecord ? RuchaTheme.accentRed : RuchaTheme.accentGreen)
-                                        : RuchaTheme.textSecondary,
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? RuchaTheme.accent.withOpacity(0.18)
+                                          : RuchaTheme.surface2,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(item.icon,
+                                        size: 16,
+                                        color: selected
+                                            ? RuchaTheme.accent
+                                            : RuchaTheme.textSecondary),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      item.label,
-                                      style: TextStyle(
-                                        color: isSelected ? Colors.white : RuchaTheme.textSecondary,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                        fontSize: 13,
-                                      ),
+                                      child: Text(
+                                    item.label,
+                                    style: TextStyle(
+                                      color: selected
+                                          ? Colors.white
+                                          : RuchaTheme.textSecondary,
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      fontSize: 13,
                                     ),
-                                  ),
+                                  )),
                                 ],
                               ),
                             ),
@@ -343,256 +189,303 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       },
                     ),
                   ),
-                  // Sidebar footer
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      border: Border(top: BorderSide(color: RuchaTheme.border)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.circle, size: 8, color: RuchaTheme.accentGreen),
-                        SizedBox(width: 8),
-                        Text(
-                          'RUCHA Desktop v1.0.0 (Linux)',
-                          style: TextStyle(fontSize: 10, color: RuchaTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _ServerStatusBar(auth: auth),
                 ],
               ),
             ),
             Expanded(
-              child: IndexedStack(
-                index: _currentIndex,
-                children: screens,
-              ),
-            ),
+                child: IndexedStack(index: _currentIndex, children: screens)),
           ],
         ),
       );
     }
 
-    // Mobile layout: Complete navigation with Top Tricolor App Bar, Navigation Drawer, and 5-item Bottom Bar with 'More' Hub!
+    // ── Mobile layout: NO drawer — everything in bottom bar ──────────────
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            const RuchaLogo(size: 26, showText: false, showFlag: false),
-            const SizedBox(width: 8),
-            Row(
-              children: [
-                const Text(
-                  'RUCHA',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _navItems[_currentIndex].label,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: RuchaTheme.accentGreen),
-                ),
-              ],
-            ),
-          ],
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(3.0),
-          child: Row(
-            children: [
-              Expanded(child: Container(height: 3, color: RuchaTheme.accentGreen)),
-              Expanded(child: Container(height: 3, color: RuchaTheme.accentGold)),
-              Expanded(child: Container(height: 3, color: RuchaTheme.accentRed)),
-            ],
-          ),
-        ),
-        actions: [
-          if (isRecording)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-              child: InkWell(
-                onTap: () => setState(() => _currentIndex = 2),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: RuchaTheme.accentRed.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: RuchaTheme.accentRed),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.circle, size: 8, color: RuchaTheme.accentRed),
-                      SizedBox(width: 5),
-                      Text('LIVE', style: TextStyle(color: RuchaTheme.accentRed, fontWeight: FontWeight.w900, fontSize: 11)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          IconButton(
-            icon: const Icon(CupertinoIcons.person_crop_circle, size: 24),
-            tooltip: 'Profile',
-            onPressed: () => setState(() => _currentIndex = 8),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      drawer: Drawer(
-        backgroundColor: RuchaTheme.surface,
-        child: Column(
-          children: [
-            // Drawer Header with Ethiopian Flag Strip & User Info
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
-              decoration: const BoxDecoration(
-                color: RuchaTheme.surface2,
-                border: Border(bottom: BorderSide(color: RuchaTheme.border)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      appBar: _currentIndex == 2
+          ? null
+          : AppBar(
+              titleSpacing: 0,
+              title: Row(
                 children: [
-                  // Flag Strip
-                  Row(
-                    children: [
-                      Expanded(child: Container(height: 3, color: RuchaTheme.accentGreen)),
-                      Expanded(child: Container(height: 3, color: RuchaTheme.accentGold)),
-                      Expanded(child: Container(height: 3, color: RuchaTheme.accentRed)),
-                    ],
+                  const RuchaLogo(size: 28, showText: false, showFlag: false),
+                  const SizedBox(width: 10),
+                  Text(
+                    _navItems[_currentIndex].label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 19,
+                      color: RuchaTheme.textPrimary,
+                      letterSpacing: -0.4,
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const RuchaLogo(size: 38, showText: false, showFlag: false),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                ],
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(2.0),
+                child: Container(
+                  height: 2,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      RuchaTheme.accentGreen,
+                      RuchaTheme.accentGold,
+                      RuchaTheme.accentRed,
+                    ]),
+                  ),
+                ),
+              ),
+              actions: [
+                if (isRecording)
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+                    child: InkWell(
+                      onTap: () => _select(2),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: RuchaTheme.accentRed.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: RuchaTheme.accentRed),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              auth.currentUser?.displayName ?? 'RUCHA Athlete',
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              '@${auth.currentUser?.username ?? "athlete"}',
-                              style: const TextStyle(color: RuchaTheme.accentGold, fontSize: 12, fontWeight: FontWeight.w700),
-                            ),
+                            Icon(Icons.circle,
+                                size: 8, color: RuchaTheme.accentRed),
+                            SizedBox(width: 5),
+                            Text('LIVE',
+                                style: TextStyle(
+                                  color: RuchaTheme.accentRed,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 11,
+                                )),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // Drawer List of all 9 items
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _navItems.length,
-                itemBuilder: (context, i) {
-                  final item = _navItems[i];
-                  final isSelected = _currentIndex == i;
-                  return ListTile(
-                    leading: Icon(
-                      item.icon,
-                      color: isSelected ? RuchaTheme.accentGreen : RuchaTheme.textSecondary,
                     ),
-                    title: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                        color: isSelected ? Colors.white : RuchaTheme.textPrimary,
-                        fontSize: 14,
+                  ),
+                IconButton(
+                  icon: const Icon(CupertinoIcons.person_crop_circle, size: 24),
+                  tooltip: 'Profile',
+                  onPressed: () => _select(6),
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+      body: IndexedStack(index: _currentIndex, children: screens),
+      bottomNavigationBar: _currentIndex == 2
+          ? null
+          : _RuchaBottomBar(
+              currentIndex: _currentIndex,
+              onSelect: _select,
+              navItems: _navItems,
+            ),
+    );
+  }
+}
+
+// ── Server status bar (wide layout only) ─────────────────────────────────────
+class _ServerStatusBar extends StatelessWidget {
+  final AuthService auth;
+  const _ServerStatusBar({required this.auth});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: RuchaTheme.border)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.circle,
+              size: 8,
+              color: auth.serverOnline
+                  ? RuchaTheme.accentGreen
+                  : RuchaTheme.accentGold),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Text(
+            auth.serverOnline ? 'Server connected' : 'Local mode',
+            style:
+                const TextStyle(fontSize: 10, color: RuchaTheme.textSecondary),
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Bottom navigation bar ─────────────────────────────────────────────────────
+class _RuchaBottomBar extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+  final List<_NavItem> navItems;
+
+  const _RuchaBottomBar({
+    required this.currentIndex,
+    required this.onSelect,
+    required this.navItems,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final unread = context.watch<CommunityStore>().unreadNoticeCount;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        border:
+            const Border(top: BorderSide(color: RuchaTheme.border, width: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 0 – Home
+              _tab(0, currentIndex, navItems[0], 0, onSelect),
+              // 1 – Explore
+              _tab(1, currentIndex, navItems[1], 0, onSelect),
+              // 2 – Record (big orange circle)
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => onSelect(2),
+                  child: Center(
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [RuchaTheme.accent, Color(0xFFE84E0A)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: RuchaTheme.accent.withOpacity(0.45),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.play_arrow_rounded,
+                          color: Colors.white, size: 28),
+                    ),
+                  ),
+                ),
+              ),
+              // 3 – Challenges
+              _tab(3, currentIndex, navItems[3], 0, onSelect),
+              // 4 – Gallery
+              _tab(4, currentIndex, navItems[4], 0, onSelect),
+              // 5 – Community
+              _tab(5, currentIndex, navItems[5], unread, onSelect),
+              // 6 – Profile  (accessed via AppBar icon — no bottom slot)
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(int index, int current, _NavItem item, int badge,
+      ValueChanged<int> onSelect) {
+    return Expanded(
+      child: _BottomItem(
+        item: item,
+        selected: current == index,
+        badge: badge,
+        onTap: () => onSelect(index),
+      ),
+    );
+  }
+}
+
+class _BottomItem extends StatelessWidget {
+  final _NavItem item;
+  final bool selected;
+  final int badge;
+  final VoidCallback onTap;
+
+  const _BottomItem({
+    required this.item,
+    required this.selected,
+    this.badge = 0,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? RuchaTheme.accent : RuchaTheme.textSecondary;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 64,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                if (selected)
+                  Container(
+                    width: 40,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: RuchaTheme.accent.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                Icon(item.icon, size: 22, color: color),
+                if (badge > 0)
+                  Positioned(
+                    right: -8,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: RuchaTheme.accentRed,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        badge > 9 ? '9+' : '$badge',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900),
                       ),
                     ),
-                    selected: isSelected,
-                    selectedTileColor: RuchaTheme.accentGreen.withOpacity(0.12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                    onTap: () {
-                      Navigator.pop(context);
-                      setState(() => _currentIndex = i);
-                    },
-                  );
-                },
-              ),
+                  ),
+              ],
             ),
-            // Footer
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: RuchaTheme.border)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.circle, size: 8, color: RuchaTheme.accentGreen),
-                  SizedBox(width: 8),
-                  Text('RUCHA · Athlete Community', style: TextStyle(fontSize: 11, color: RuchaTheme.textSecondary)),
-                ],
+            const SizedBox(height: 4),
+            Text(
+              item.label,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
               ),
             ),
           ],
         ),
-      ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: screens,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex == 0
-            ? 0
-            : _currentIndex == 1
-                ? 1
-                : _currentIndex == 2
-                    ? 2
-                    : _currentIndex == 6
-                        ? 3
-                        : 4, // 4 = More Hub
-        onTap: (bIndex) {
-          if (bIndex == 0) {
-            setState(() => _currentIndex = 0);
-          } else if (bIndex == 1) {
-            setState(() => _currentIndex = 1);
-          } else if (bIndex == 2) {
-            setState(() => _currentIndex = 2);
-          } else if (bIndex == 3) {
-            setState(() => _currentIndex = 6); // Community
-          } else if (bIndex == 4) {
-            _showMoreHubSheet(); // More Sheet gives 1-tap access to Gallery, Segments, Challenges, Log, Profile
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: RuchaTheme.accentGreen,
-        unselectedItemColor: RuchaTheme.textSecondary,
-        backgroundColor: RuchaTheme.surface,
-        selectedFontSize: 11,
-        unselectedFontSize: 10,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.house_fill, size: 20),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.compass, size: 20),
-            label: 'Explore',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.radio_button_checked, size: 24, color: RuchaTheme.accentCoral),
-            label: 'Record',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.person_3_fill, size: 20),
-            label: 'Community',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded, size: 20),
-            label: 'More',
-          ),
-        ],
       ),
     );
   }

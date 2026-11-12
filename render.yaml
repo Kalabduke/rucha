@@ -1,0 +1,49 @@
+services:
+  # ── Go API ──────────────────────────────────────────────────────────────────
+  - type: web
+    name: rucha-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    # Keep the free instance warm so it never cold-starts.
+    # Render's free web service spins down after 15 min idle;
+    # we ping /api/health from a cron job every 10 min to prevent that.
+    envVars:
+      - key: PORT
+        value: "8081"
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        value: "9001526833:AAH2XCQ8mcuAgz_BZFzYsIPmMQZrKe8atXw"
+      - key: TELEGRAM_BOT_USERNAME
+        value: "ruchaabot"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rucha-db
+          property: connectionString
+
+  # ── Keepalive cron — pings the API every 10 min so free tier never sleeps ──
+  - type: cron
+    name: rucha-keepalive
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "*/10 * * * *"
+    command: >-
+      curl -fsS --max-time 10
+      https://rucha-api.onrender.com/api/health
+      || true
+
+databases:
+  # ── PostgreSQL — free tier, 1 GB storage, never sleeps ─────────────────────
+  - name: rucha-db
+    plan: free
+    databaseName: rucha
+    user: rucha
+    region: oregon

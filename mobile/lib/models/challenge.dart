@@ -13,6 +13,13 @@ class Challenge {
   final String? opponentName;
   final String? opponentId;
   final String? createdBy;
+  final String? ownerId;
+  /// Community/club this challenge belongs to, if any.
+  final String? communityId;
+  /// Whether this challenge is pending approval by the community owner/admin.
+  final bool pendingApproval;
+  /// Invite status for head-to-head: '', 'pending', 'accepted', 'declined'
+  final String inviteStatus;
 
   Challenge({
     required this.id,
@@ -29,6 +36,10 @@ class Challenge {
     this.opponentName,
     this.opponentId,
     this.createdBy,
+    this.ownerId,
+    this.communityId,
+    this.pendingApproval = false,
+    this.inviteStatus = '',
   });
 
   factory Challenge.fromJson(Map<String, dynamic> json) => Challenge(
@@ -38,14 +49,21 @@ class Challenge {
     kind: json['kind']?.toString() ?? 'route',
     mode: json['mode']?.toString() ?? 'open',
     targetKm: (json['targetKm'] as num?)?.toDouble(),
-    targetTime: (json['targetTime'] as num?)?.toInt() ?? (json['targetSeconds'] as num?)?.toInt(),
-    targetElev: (json['targetElev'] as num?)?.toDouble() ?? (json['targetElevationM'] as num?)?.toDouble(),
-    prizeBirr: (json['prizeBr'] as num?)?.toInt() ?? (json['prize'] as num?)?.toInt() ?? 0,
+    targetTime: (json['targetTime'] as num?)?.toInt() ??
+        (json['targetSeconds'] as num?)?.toInt(),
+    targetElev: (json['targetElev'] as num?)?.toDouble() ??
+        (json['targetElevationM'] as num?)?.toDouble(),
+    prizeBirr: (json['prizeBr'] as num?)?.toInt() ??
+        (json['prize'] as num?)?.toInt() ?? 0,
     visibility: json['visibility']?.toString() ?? 'public',
     isJoined: json['joined'] == true,
     opponentName: json['opponentName']?.toString(),
     opponentId: json['opponentId']?.toString(),
     createdBy: json['createdBy']?.toString() ?? json['ownerName']?.toString(),
+    ownerId: json['ownerId']?.toString() ?? json['owner_id']?.toString(),
+    communityId: json['communityId']?.toString() ?? json['clubId']?.toString(),
+    pendingApproval: json['pendingApproval'] == true || json['pending'] == true,
+    inviteStatus: json['inviteStatus']?.toString() ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -58,11 +76,14 @@ class Challenge {
     if (targetTime != null) 'targetSeconds': targetTime,
     if (targetElev != null) 'targetElevationM': targetElev?.toInt(),
     'prizeBr': prizeBirr,
-    'prize': prizeBirr,
     'visibility': visibility,
     'joined': isJoined,
     if (opponentName != null) 'opponentName': opponentName,
     if (opponentId != null) 'opponentId': opponentId,
     if (createdBy != null) 'createdBy': createdBy,
+    if (ownerId != null) 'ownerId': ownerId,
+    if (communityId != null) 'communityId': communityId,
+    'pendingApproval': pendingApproval,
+    'inviteStatus': inviteStatus,
   };
 }

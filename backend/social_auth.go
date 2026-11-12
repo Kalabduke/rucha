@@ -142,10 +142,11 @@ func handleAuthConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"telegram":       tgToken != "" && botName() != "",
 		"telegramBot":    botName(),
-		"google":         googleID != "",
-		"googleId":       googleID,
-		"apple":          appleClientID != "",
-		"appleClientId":  appleClientID,
+		// Google and Apple are intentionally omitted — RUCHA uses Telegram + username/password only.
+		"google":         false,
+		"googleId":       "",
+		"apple":          false,
+		"appleClientId":  "",
 		"privacyVersion": privacyVersion,
 		"termsVersion":   termsVersion,
 		"minPassword":    minPasswordLength,
@@ -194,7 +195,7 @@ func handleTelegramVerify(w http.ResponseWriter, r *http.Request) {
 		LoginID string `json:"loginId"`
 		Code    string `json:"code"`
 	}
-	if err := decode(r, &b); err != nil {
+	if err := decode(r, w, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -237,7 +238,7 @@ func handleTelegramVerify(w http.ResponseWriter, r *http.Request) {
 
 	u, tok, err := auth.SocialLogin("telegram", strconv.FormatInt(tgID, 10), first, uname)
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, map[string]interface{}{"user": u, "token": tok})
@@ -400,7 +401,7 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Credential string `json:"credential"`
 	}
-	if err := decode(r, &b); err != nil || b.Credential == "" {
+	if err := decode(r, w, &b); err != nil || b.Credential == "" {
 		fail(w, 400, "missing Google credential")
 		return
 	}
@@ -444,7 +445,7 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	u, tok, err := auth.SocialLogin("google", t.Sub, name, hint)
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, map[string]interface{}{"user": u, "token": tok})

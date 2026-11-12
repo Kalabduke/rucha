@@ -58,6 +58,10 @@ backend/
   docker-compose.yml
   Dockerfile
   .env.example      Configuration template
+
+mobile/             Flutter app (Android, iOS, desktop)
+  lib/              Screens, services and models
+  assets/www/       Bundled PWA copy used by the in-app web view
 ```
 
 ## Run the frontend
@@ -85,6 +89,59 @@ cp .env.example .env     # fill in the values you need
 go run .
 ```
 
+## Run the Flutter app
+
+The native app lives in `mobile/` and is not a WebView wrapper around the PWA.
+
+### Android
+
+```sh
+cd mobile
+flutter pub get
+flutter run
+# Or build APK
+flutter build apk --split-per-abi --target-platform android-arm64
+```
+
+APK output: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`
+
+### iOS
+
+**Requires macOS with Xcode**. See [IOS_BUILD_GUIDE.md](IOS_BUILD_GUIDE.md) for complete instructions.
+
+```sh
+cd mobile
+./scripts/build_ios.sh
+# Or manually:
+flutter pub get
+cd ios && pod install && cd ..
+flutter build ipa
+```
+
+IPA output: `build/ios/ipa/RUCHA.ipa`
+
+The app works without a backend:
+
+- Account creation and sign-in are local-first. Accounts are stored on the
+  device with a random salt and a SHA-256 password hash, and activities are
+  saved locally before any network call.
+- **Continue without an account** opens the app in guest mode. Recorded
+  activities, gallery cards, segments and challenges stay on the device.
+- Open **Server settings** from the auth screen, Profile, or the drawer to set
+  the API URL. Presets cover production, the Android emulator
+  (`http://10.0.2.2:8081/api`) and desktop (`http://localhost:8081/api`).
+- Telegram sign-in only appears when the configured backend is reachable and
+  `TELEGRAM_BOT_TOKEN` is set. It never fakes a verification code.
+- Native Google and Apple sign-in are not wired into the Flutter build yet.
+  Only show those buttons on a build that adds `google_sign_in` /
+  `sign_in_with_apple` plus the platform client IDs.
+
+The default API value in `mobile/lib/core/constants.dart` is
+`https://ruchaa.ethiodeploy.app/api`. If that host is only the static PWA (its
+`/api/auth/config` returns an nginx 404 page), the app detects it, reports that
+the address is not the Go backend, and continues in local mode. Point Server
+settings at a running backend to sync.
+
 ## Configuration
 
 Copy `backend/.env.example` to `backend/.env` and set:
@@ -98,7 +155,9 @@ Copy `backend/.env.example` to `backend/.env` and set:
 | `POSTGRES_PASSWORD` | Database password |
 | `CORS_ORIGIN` | Allowed frontend origin |
 
-Telegram sends the six-digit sign-in code in the bot chat. For Google, add the
+Telegram sends the six-digit sign-in code in the bot chat. Create a bot that
+belongs only to RUCHA; do not reuse credentials from another app such as the
+rental-ethiopia bot. For Google, add the
 site under **Authorized JavaScript origins**. For Apple, configure the Services
 ID for the web, verify the domain, and serve RUCHA over HTTPS.
 
@@ -109,7 +168,9 @@ RUCHA uses one account per person:
 - **Username** — 3–20 characters, lowercase letters, numbers and underscores.
   It is unique and case-insensitive, so `Selam_Runs` and `selam_runs` are the
   same name.
-- **Password** — at least 8 characters. Stored as a bcrypt hash.
+- **Password** — at least 8 characters. Backend accounts are stored as a bcrypt
+  hash. Flutter local accounts use a random salt and a SHA-256 hash on the
+  device; plain-text passwords are never stored.
 - **Social sign-in** — Telegram, Google and Apple verify the person first. A new
   social account is created as *incomplete* and cannot use data endpoints until
   the person chooses a RUCHA username and password. Existing accounts return to

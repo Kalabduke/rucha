@@ -12,6 +12,10 @@
 	<string>RUCHA needs your precise location to track running and cycling routes and distance.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>RUCHA needs background location to record your activities while your phone is locked.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>RUCHA uses Bluetooth to connect heart rate monitors and cycling cadence sensors.</string>
 	<key>CFBundleExecutable</key>
@@ -71,6 +75,11 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tg</string>
+		<string>telegram</string>
 	</array>
 </dict>
 </plist>

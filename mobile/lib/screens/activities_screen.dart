@@ -1,10 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/activity.dart';
-import '../services/api_service.dart';
+
 import '../core/constants.dart';
+import '../core/ethiopian_utils.dart';
 import '../core/theme.dart';
+import '../models/activity.dart';
+import '../services/activity_store.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/settings_service.dart';
 import 'run_card_screen.dart';
 
 class ActivitiesScreen extends StatefulWidget {
@@ -17,181 +22,149 @@ class ActivitiesScreen extends StatefulWidget {
 }
 
 class _ActivitiesScreenState extends State<ActivitiesScreen> {
-  String _filter = 'all'; // 'all', 'run', 'ride'
-  List<Activity> _activities = [];
-  bool _isLoading = true;
+  String _filter = 'all';
+  bool _refreshing = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadActivities();
-  }
-
-  Future<void> _loadActivities() async {
-    final api = context.read<ApiService>();
-    final list = await api.fetchActivities();
-    if (mounted) {
-      setState(() {
-        _activities = list.isNotEmpty ? list : _fallbackActivities();
-        _isLoading = false;
-      });
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    final store = context.read<ActivityStore>();
+    final auth = context.read<AuthService>();
+    if (auth.serverOnline && auth.isAuthenticated && !auth.isLocalAccount) {
+      final api = context.read<ApiService>();
+      final remote = await api.fetchActivities();
+      await store.mergeRemote(remote);
+    } else {
+      await store.ensureLoaded();
     }
-  }
-
-  List<Activity> _fallbackActivities() {
-    return [
-      Activity(
-        id: 'act_1',
-        title: 'Morning Entoto Ridge Climb',
-        type: 'run',
-        city: 'Addis Ababa',
-        distance: 8.42,
-        duration: 2580,
-        pace: 306.0,
-        elevation: 340.0,
-        date: DateTime.now().subtract(const Duration(hours: 4)),
-      ),
-      Activity(
-        id: 'act_2',
-        title: 'Meskel Square Fast Circuit',
-        type: 'run',
-        city: 'Addis Ababa',
-        distance: 5.10,
-        duration: 1320,
-        pace: 258.0,
-        elevation: 45.0,
-        date: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-      Activity(
-        id: 'act_3',
-        title: 'Bole Medhane Alem Evening Ride',
-        type: 'ride',
-        city: 'Addis Ababa',
-        distance: 21.60,
-        duration: 3240,
-        pace: 150.0,
-        elevation: 180.0,
-        date: DateTime.now().subtract(const Duration(days: 3)),
-      ),
-    ];
+    if (!mounted) return;
+    setState(() => _refreshing = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _activities.where((a) {
-      if (_filter == 'all') return true;
-      return a.type == _filter;
-    }).toList();
+    final store = context.watch<ActivityStore>();
+    final activities = store.activities;
+    final filtered =
+        activities.where((a) => _filter == 'all' || a.type == _filter).toList();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text('Training Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(CupertinoIcons.arrow_clockwise),
-            onPressed: () {
-              setState(() => _isLoading = true);
-              _loadActivities();
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: RuchaTheme.accentGreen))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Filter Selector
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: RuchaTheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: RuchaTheme.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(child: _filterButton('all', 'All (${_activities.length})')),
-                        Expanded(child: _filterButton('run', 'Runs')),
-                        Expanded(child: _filterButton('ride', 'Rides')),
-                      ],
-                    ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: RuchaTheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: RuchaTheme.border),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  if (filtered.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(32),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: RuchaTheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: RuchaTheme.border),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(CupertinoIcons.doc_text, size: 40, color: RuchaTheme.textSecondary),
-                          const SizedBox(height: 12),
-                          const Text('No activities recorded yet', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          const SizedBox(height: 6),
-                          const Text('Record your first run or ride with live GPS.', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13)),
-                          const SizedBox(height: 18),
-                          ElevatedButton.icon(
-                            onPressed: widget.onStartRecording,
-                            icon: const Icon(CupertinoIcons.play_arrow_solid, size: 16),
-                            label: const Text('Start Recording'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: RuchaTheme.accentGreen,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, idx) {
-                        final act = filtered[idx];
-                        return _buildActivityCard(act);
-                      },
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(child: _filterButton('all', 'All')),
+                      Expanded(child: _filterButton('run', '● Runs')),
+                      Expanded(child: _filterButton('walk', '● Walks')),
+                      Expanded(child: _filterButton('ride', '● Rides')),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(CupertinoIcons.arrow_clockwise, size: 20),
+                tooltip: 'Refresh',
+                onPressed: _refreshing ? null : _refresh,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _SummaryStrip(store: store),
+          const SizedBox(height: 16),
+          if (filtered.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(32),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: RuchaTheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: RuchaTheme.border),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    CupertinoIcons.doc_text,
+                    size: 40,
+                    color: RuchaTheme.textSecondary,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    activities.isEmpty
+                        ? 'No activities recorded yet'
+                        : 'No ${_filter == 'ride' ? 'rides' : _filter == 'walk' ? 'walks' : 'runs'} yet',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Record your first run, walk or ride with live GPS. It is saved on this '
+                    'device even when the server is offline.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: RuchaTheme.textSecondary,
+                        fontSize: 13,
+                        height: 1.4),
+                  ),
+                  const SizedBox(height: 18),
+                  ElevatedButton.icon(
+                    onPressed: widget.onStartRecording,
+                    icon: const Icon(CupertinoIcons.play_arrow_solid, size: 16),
+                    label: const Text('Record an activity'),
+                  ),
                 ],
               ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: filtered.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) =>
+                  _ActivityCard(act: filtered[index]),
             ),
+        ],
+      ),
     );
   }
 
   Widget _filterButton(String type, String label) {
     final active = _filter == type;
+    // Dot color per type to match the design's coloured pill labels
+    Color dotColor = RuchaTheme.accent;
+    if (type == 'walk') dotColor = RuchaTheme.accentGold;
+    if (type == 'ride') dotColor = RuchaTheme.accentGreen;
+
     return GestureDetector(
       onTap: () => setState(() => _filter = type),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: active ? RuchaTheme.accentGreen : Colors.transparent,
+          color: active ? dotColor.withValues(alpha: 0.18) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? dotColor : Colors.transparent,
+            width: 1,
+          ),
         ),
         alignment: Alignment.center,
         child: Text(
@@ -199,20 +172,88 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
           style: TextStyle(
             color: active ? Colors.white : RuchaTheme.textSecondary,
             fontWeight: active ? FontWeight.bold : FontWeight.w600,
-            fontSize: 13,
+            fontSize: 11,
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildActivityCard(Activity act) {
+class _SummaryStrip extends StatelessWidget {
+  final ActivityStore store;
+
+  const _SummaryStrip({required this.store});
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = store.allTimeStats;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface2.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Row(
+        children: [
+          _metric('ALL TIME', '${stats.distanceKm.toStringAsFixed(1)} km'),
+          _metric('TIME', RuchaConstants.formatDuration(stats.durationSeconds)),
+          _metric('CLIMB', '+${stats.elevationGain.round()} m'),
+          _metric('SESSIONS', '${stats.activityCount}'),
+        ],
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: RuchaTheme.textSecondary,
+              fontSize: 8.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  final Activity act;
+
+  const _ActivityCard({required this.act});
+
+  @override
+  Widget build(BuildContext context) {
+    final isRide = act.type == 'ride';
+    final isWalk = act.type == 'walk';
+    final accent = isRide
+        ? RuchaTheme.accentGreen
+        : isWalk
+            ? RuchaTheme.accentGold
+            : RuchaTheme.accent;
+    final icon = isRide
+        ? Icons.directions_bike
+        : isWalk
+            ? Icons.directions_walk
+            : Icons.directions_run;
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => RunCardScreen(activity: act),
-          ),
+          MaterialPageRoute(builder: (_) => RunCardScreen(activity: act)),
         );
       },
       child: Container(
@@ -231,26 +272,25 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: act.type == 'ride'
-                            ? RuchaTheme.accentGreen.withValues(alpha: 0.15)
-                            : RuchaTheme.accentCoral.withValues(alpha: 0.15),
+                        color: accent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            act.type == 'ride' ? Icons.directions_bike : Icons.directions_run,
+                            icon,
                             size: 14,
-                            color: act.type == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
+                            color: accent,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             act.type.toUpperCase(),
                             style: TextStyle(
-                              color: act.type == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
+                              color: accent,
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
                             ),
@@ -260,14 +300,19 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      act.city,
-                      style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+                      RuchaConstants.cities[act.city]?.name ?? act.city,
+                      style: const TextStyle(
+                        color: RuchaTheme.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
                 Text(
-                  _relativeTime(act.date),
-                  style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 11),
+                  _relativeTime(act.date, context),
+                  style: const TextStyle(
+                      color: RuchaTheme.textSecondary, fontSize: 11),
                 ),
               ],
             ),
@@ -279,10 +324,31 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
             const SizedBox(height: 14),
             Row(
               children: [
-                _statCol('DISTANCE', '${act.distance.toStringAsFixed(2)} km'),
-                _statCol('DURATION', RuchaConstants.formatDuration(act.duration)),
-                _statCol('PACE', '${RuchaConstants.formatPace(act.pace)} /km'),
-                _statCol('CLIMB', '+${act.elevation.round()} m'),
+                _statCol(
+                    'DISTANCE',
+                    applyGeez('${act.distance.toStringAsFixed(2)} km',
+                        enabled: context.read<SettingsService>().geezNumerals)),
+                _statCol(
+                    'DURATION',
+                    applyGeez(RuchaConstants.formatDuration(act.duration),
+                        enabled: context.read<SettingsService>().geezNumerals)),
+                if (isRide)
+                  _statCol(
+                      'SPEED',
+                      applyGeez(
+                          '${(act.distance / (act.duration / 3600.0)).toStringAsFixed(1)} km/h',
+                          enabled:
+                              context.read<SettingsService>().geezNumerals))
+                else
+                  _statCol(
+                      'PACE',
+                      applyGeez('${RuchaConstants.formatPace(act.pace)} /km',
+                          enabled:
+                              context.read<SettingsService>().geezNumerals)),
+                _statCol(
+                    'CLIMB',
+                    applyGeez('+${act.elevation.round()} m',
+                        enabled: context.read<SettingsService>().geezNumerals)),
               ],
             ),
           ],
@@ -296,19 +362,38 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 9, fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: RuchaTheme.textSecondary,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 3),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
   }
 
-  String _relativeTime(DateTime date) {
+  String _relativeTime(DateTime date, BuildContext context) {
+    final settings = context.read<SettingsService>();
     final diff = DateTime.now().difference(date);
-    if (diff.inHours < 1) return 'Just now';
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${date.day}/${date.month}';
+    // Use Ethiopian calendar if enabled
+    return formatEthiopianDate(
+      date,
+      useEthiopian: settings.ethiopianCalendar,
+      useGeez: settings.geezNumerals,
+      amharic: settings.language == 'am',
+    );
   }
 }

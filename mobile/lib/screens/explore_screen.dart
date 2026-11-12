@@ -1,120 +1,173 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../core/constants.dart';
 import '../core/theme.dart';
-import '../services/tracking_service.dart';
 import '../models/activity.dart';
+import '../models/popular_area.dart';
+import '../services/activity_store.dart';
+import '../services/api_service.dart';
+import '../services/tracking_service.dart';
 import '../widgets/osm_map_widget.dart';
 
 class ExploreScreen extends StatefulWidget {
-  const ExploreScreen({super.key});
+  final VoidCallback? onStartRecording;
+
+  const ExploreScreen({super.key, this.onStartRecording});
 
   @override
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
 class _ExploreScreenState extends State<ExploreScreen> {
-  String _filter = 'all'; // 'all', 'run', 'ride'
+  List<PopularArea> _remoteAreas = [];
+  bool _loading = true;
+  String? _selectedKey;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAreas());
+  }
+
+  Future<void> _loadAreas() async {
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+    final api = context.read<ApiService>();
+    final areas = await api.fetchPopularAreas();
+    if (!mounted) return;
+    setState(() {
+      _remoteAreas = areas;
+      _loading = false;
+    });
+  }
+
+  Future<void> _openGoogleMaps(PopularArea area) async {
+    final launched = await launchUrl(
+      Uri.parse(area.googleMapsDirectionsUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open Google Maps for ${area.name}.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final tracking = context.watch<TrackingService>();
-    final city = RuchaConstants.cities[tracking.selectedCity] ?? RuchaConstants.cities['addis']!;
+    final store = context.watch<ActivityStore>();
+    final city = RuchaConstants.cities[tracking.selectedCity] ??
+        RuchaConstants.cities['addis']!;
 
-    // Procedural landmark routes for the selected city
-    final mockRoutes = _getCityRoutes(city);
-
-    final filtered = mockRoutes.where((r) {
-      if (_filter == 'all') return true;
-      return r.type == _filter;
+    final localAreas = PopularAreaBuilder.clusterActivities(store.activities);
+    final allAreas = PopularAreaBuilder.merge(_remoteAreas, localAreas);
+    final nearby = allAreas.where((area) {
+      return RuchaConstants.haversineDistance(
+            city.lat,
+            city.lng,
+            area.lat,
+            area.lng,
+          ) <=
+          60000;
     }).toList();
+    final areas = nearby.isNotEmpty ? nearby : allAreas;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text('Explore · ${city.name}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        actions: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            margin: const EdgeInsets.only(right: 14),
-            decoration: BoxDecoration(
-              color: RuchaTheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: RuchaTheme.border),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.terrain, size: 14, color: RuchaTheme.accentGreen),
-                const SizedBox(width: 6),
-                Text(
-                  '${city.baseEle.round()} m',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
+    PopularArea? selected;
+    for (final area in areas) {
+      if (area.key == _selectedKey) {
+        selected = area;
+        break;
+      }
+    }
+    selected ??= areas.isNotEmpty ? areas.first : null;
+
+    final preview = tracking.previewPosition;
+
+    return RefreshIndicator(
+      color: RuchaTheme.accentGreen,
+      backgroundColor: RuchaTheme.surface,
+      onRefresh: _loadAreas,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Filter Selector
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: RuchaTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: RuchaTheme.border),
-              ),
-              child: Row(
-                children: [
-                  _filterButton('all', 'All Routes'),
-                  _filterButton('run', 'Runs'),
-                  _filterButton('ride', 'Rides'),
-                ],
-              ),
-            ),
+            _cityHeader(city),
             const SizedBox(height: 16),
-
-            // Embedded OpenStreetMap View
-            Container(
-              height: 250,
-              decoration: BoxDecoration(
-                color: RuchaTheme.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: RuchaTheme.border),
-              ),
-              child: OsmMapWidget(
-                centerLat: city.lat,
-                centerLng: city.lng,
-                initialZoom: 14,
-                track: filtered.isNotEmpty ? filtered.first.track : const [],
-                routeColor: RuchaTheme.accentGreen,
-                isInteractive: true,
-                isDarkMode: true,
-              ),
+            _buildMap(city, areas, selected, preview),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'POPULAR TRAINING AREAS',
+                    style: TextStyle(
+                      color: RuchaTheme.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Refresh areas',
+                  onPressed: _loading ? null : _loadAreas,
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(
+                          CupertinoIcons.refresh,
+                          size: 18,
+                          color: RuchaTheme.textSecondary,
+                        ),
+                ),
+              ],
             ),
-
+            const SizedBox(height: 2),
+            if (areas.isEmpty)
+              Text(
+                'No areas near ${city.name} yet.',
+                style: const TextStyle(
+                  color: RuchaTheme.textSecondary,
+                  fontSize: 11,
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (_loading && areas.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (areas.isEmpty)
+              _emptyAreas(city)
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: areas.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final area = areas[index];
+                  return _areaCard(area, selected?.key == area.key, preview);
+                },
+              ),
             const SizedBox(height: 24),
-
-            // Popular Running Areas
             const Text(
-              'POPULAR TRAINING AREAS',
+              'ALTITUDE CONTEXT',
               style: TextStyle(
                 color: RuchaTheme.textSecondary,
                 fontSize: 11,
@@ -123,75 +176,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               ),
             ),
             const SizedBox(height: 10),
-
-            _areaCard('Meskel Square Circuit', 'Asphalt · 1.2 km loop', 'Hotspot for tempo intervals & sprinters', '1,420 athletes'),
-            _areaCard('Entoto Hill Ridge', 'Trail · 8.4 km climb', 'Famous high-altitude distance trails (+450m)', '890 athletes'),
-            _areaCard('Bole Medhanealem Loop', 'Road · 3.5 km circuit', 'Evening road running and brisk cycling', '610 athletes'),
-
-            const SizedBox(height: 24),
-
-            // Routes List
-            const Text(
-              'COMMUNITY ROUTES',
-              style: TextStyle(
-                color: RuchaTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, idx) {
-                final r = filtered[idx];
-                return Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: RuchaTheme.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: RuchaTheme.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: r.type == 'ride'
-                              ? RuchaTheme.accentGreen.withOpacity(0.15)
-                              : RuchaTheme.accentCoral.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          r.type == 'ride' ? Icons.directions_bike : Icons.directions_run,
-                          color: r.type == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(r.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${r.distance.toStringAsFixed(1)} km · +${r.elevation.round()} m elevation',
-                              style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(CupertinoIcons.chevron_right, size: 16, color: RuchaTheme.textSecondary),
-                    ],
-                  ),
-                );
-              },
-            ),
+            _altitudeCard(city),
             const SizedBox(height: 30),
           ],
         ),
@@ -199,34 +184,285 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  Widget _filterButton(String key, String label) {
-    final active = _filter == key;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _filter = key),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? RuchaTheme.surface2 : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+  Widget _cityHeader(City city) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: RuchaTheme.accentGreen.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              CupertinoIcons.location_solid,
+              color: RuchaTheme.accentGreen,
+              size: 20,
+            ),
           ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? RuchaTheme.textPrimary : RuchaTheme.textSecondary,
-              fontWeight: FontWeight.w700,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  city.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: RuchaTheme.surface2,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: RuchaTheme.border),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.terrain,
+                  size: 13,
+                  color: RuchaTheme.accentGreen,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${city.baseEle.round()} m',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMap(
+    City city,
+    List<PopularArea> areas,
+    PopularArea? selected,
+    TrackPoint? preview,
+  ) {
+    final centerLat = selected?.lat ?? preview?.lat ?? city.lat;
+    final centerLng = selected?.lng ?? preview?.lng ?? city.lng;
+    return Container(
+      height: 260,
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Stack(
+        children: [
+          OsmMapWidget(
+            centerLat: centerLat,
+            centerLng: centerLng,
+            initialZoom: 14,
+            routeColor: RuchaTheme.accentGreen,
+            isInteractive: true,
+            isDarkMode: true,
+            currentPosition: preview, // Pulsing blue dot for user location
+            markers: [
+              for (final area in areas)
+                OsmMapMarker(
+                  lat: area.lat,
+                  lng: area.lng,
+                  label: area.name,
+                  selected: selected?.key == area.key,
+                  color: selected?.key == area.key
+                      ? RuchaTheme.accentCoral
+                      : RuchaTheme.accentGreen,
+                  onTap: () => setState(() => _selectedKey = area.key),
+                ),
+            ],
+          ),
+          if (preview != null)
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: Material(
+                color: RuchaTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                elevation: 2,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    setState(() {
+                      _selectedKey =
+                          null; // Clear area selection to center on user
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    child: const Icon(
+                      CupertinoIcons.location_fill,
+                      color: RuchaTheme.accentBlue,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyAreas(City city) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                CupertinoIcons.map_pin_ellipse,
+                color: RuchaTheme.accentGold,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'The map starts with your first real run',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start recording near ${city.name} to discover training areas.',
+            style: const TextStyle(
+              color: RuchaTheme.textSecondary,
               fontSize: 12,
             ),
+          ),
+          if (widget.onStartRecording != null) ...[
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              onPressed: widget.onStartRecording,
+              icon: const Icon(CupertinoIcons.play_arrow_solid, size: 18),
+              label: const Text('Record an activity'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _areaCard(
+    PopularArea area,
+    bool selected,
+    TrackPoint? preview,
+  ) {
+    final distance = area.distanceFromMeters(preview?.lat, preview?.lng);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: selected ? RuchaTheme.accentGreen : RuchaTheme.border,
+          width: selected ? 1.4 : 1,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => setState(() => _selectedKey = area.key),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: RuchaTheme.accentGreen.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  CupertinoIcons.map_pin_ellipse,
+                  color: RuchaTheme.accentGreen,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      area.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${area.runCount} ${area.runCount == 1 ? 'activity' : 'activities'} started here'
+                      '${area.city.isNotEmpty ? ' · ${area.city}' : ''}',
+                      style: const TextStyle(
+                        color: RuchaTheme.accentGold,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      area.coordinates +
+                          (distance > 0
+                              ? ' · ${distance < 1000 ? '${distance.round()} m' : '${(distance / 1000).toStringAsFixed(1)} km'} away'
+                              : ''),
+                      style: const TextStyle(
+                        color: RuchaTheme.textSecondary,
+                        fontSize: 10.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Open in Google Maps',
+                onPressed: () => _openGoogleMaps(area),
+                style: IconButton.styleFrom(
+                  backgroundColor:
+                      RuchaTheme.accentCoral.withValues(alpha: 0.14),
+                  foregroundColor: RuchaTheme.accentCoral,
+                ),
+                icon: const Icon(Icons.directions, size: 20),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _areaCard(String name, String tag, String desc, String athleteCount) {
+  Widget _altitudeCard(City city) {
+    final adjusted = RuchaConstants.seaLevelEquivalentPace(300.0, city.baseEle);
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: RuchaTheme.surface,
@@ -239,72 +475,51 @@ class _ExploreScreenState extends State<ExploreScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: RuchaTheme.accentGreen.withOpacity(0.12),
+              color: RuchaTheme.accentGreen.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(CupertinoIcons.location_solid, color: RuchaTheme.accentGreen, size: 18),
+            child: const Icon(
+              Icons.terrain,
+              color: RuchaTheme.accentGreen,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                    Text(athleteCount, style: const TextStyle(color: RuchaTheme.accentGold, fontSize: 11, fontWeight: FontWeight.w700)),
-                  ],
+                Text(
+                  '${city.name} · ${city.baseEle.round()} m',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 2),
-                Text(tag, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(desc, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+                Text(
+                  city.tag,
+                  style: const TextStyle(
+                    color: RuchaTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'A 5:00/km effort here is roughly ${RuchaConstants.formatPace(adjusted)}/km at sea level. '
+                  'The app adjusts pace for altitude using this city elevation.',
+                  style: const TextStyle(
+                    color: RuchaTheme.textSecondary,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
               ],
             ),
           ),
         ],
       ),
     );
-  }
-
-  List<Activity> _getCityRoutes(City city) {
-    return [
-      Activity(
-        id: 'r1',
-        title: '${city.name} Morning Loop',
-        type: 'run',
-        distance: 6.2,
-        duration: 1860,
-        elevation: 85,
-        pace: 300,
-        calories: 390,
-        date: DateTime.now(),
-        city: city.id,
-        track: [
-          TrackPoint(lat: city.lat, lng: city.lng, ele: city.baseEle, d: 0, t: 0, accuracy: 5),
-          TrackPoint(lat: city.lat + 0.005, lng: city.lng + 0.007, ele: city.baseEle + 30, d: 2.1, t: 600, accuracy: 5),
-          TrackPoint(lat: city.lat + 0.009, lng: city.lng + 0.003, ele: city.baseEle + 55, d: 4.5, t: 1300, accuracy: 5),
-          TrackPoint(lat: city.lat, lng: city.lng, ele: city.baseEle, d: 6.2, t: 1860, accuracy: 5),
-        ],
-      ),
-      Activity(
-        id: 'r2',
-        title: '${city.name} High Altitude Climb',
-        type: 'ride',
-        distance: 18.5,
-        duration: 3200,
-        elevation: 320,
-        pace: 172,
-        calories: 610,
-        date: DateTime.now(),
-        city: city.id,
-        track: [
-          TrackPoint(lat: city.lat, lng: city.lng, ele: city.baseEle, d: 0, t: 0, accuracy: 5),
-          TrackPoint(lat: city.lat + 0.015, lng: city.lng + 0.012, ele: city.baseEle + 180, d: 9.0, t: 1600, accuracy: 5),
-          TrackPoint(lat: city.lat + 0.022, lng: city.lng + 0.019, ele: city.baseEle + 320, d: 18.5, t: 3200, accuracy: 5),
-        ],
-      ),
-    ];
   }
 }

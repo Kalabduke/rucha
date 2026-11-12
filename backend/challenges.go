@@ -199,7 +199,7 @@ func handleChallenges(w http.ResponseWriter, r *http.Request) {
 		v := currentViewer(tokenFrom(r))
 		list, err := store.Challenges()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		out := []Challenge{}
@@ -227,7 +227,7 @@ func handleChallenges(w http.ResponseWriter, r *http.Request) {
 func createChallenge(w http.ResponseWriter, r *http.Request) {
 	v := currentViewer(tokenFrom(r))
 	var c Challenge
-	if err := decode(r, &c); err != nil {
+	if err := decode(r, w, &c); err != nil {
 		fail(w, 400, "invalid JSON: "+err.Error())
 		return
 	}
@@ -324,9 +324,10 @@ func createChallenge(w http.ResponseWriter, r *http.Request) {
 		c.OpponentID, c.OpponentName, c.InviteStatus = "", "", ""
 	}
 	if err := store.AddChallenge(c); err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
+	announceChallenge(c, v)
 	athleteID, athleteName := athleteFor(v, "", "")
 	_ = store.JoinChallenge(c.ID, athleteID, athleteName)
 	writeJSON(w, c)
@@ -337,12 +338,15 @@ func handleJoin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 405, "POST only")
 		return
 	}
+	v := currentViewer(tokenFrom(r))
+	if v.ID == "" {
+		fail(w, 401, errNotAuthed.Error())
+		return
+	}
 	var body struct {
 		ChallengeID string `json:"challengeId"`
-		AthleteID   string `json:"athleteId"`
-		AthleteName string `json:"athleteName"`
 	}
-	if err := decode(r, &body); err != nil || body.ChallengeID == "" {
+	if err := decode(r, w, &body); err != nil || body.ChallengeID == "" {
 		fail(w, 400, "challengeId is required")
 		return
 	}
@@ -351,17 +355,15 @@ func handleJoin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, errNoChallenge.Error())
 		return
 	}
-	v := currentViewer(tokenFrom(r))
 	if !canSeeChallenge(c, v) {
 		fail(w, 403, "this challenge is not available to you")
 		return
 	}
-	id, name := athleteFor(v, body.AthleteID, body.AthleteName)
-	if err := store.JoinChallenge(c.ID, id, name); err != nil {
-		fail(w, 500, err.Error())
+	if err := store.JoinChallenge(c.ID, v.ID, v.Username); err != nil {
+		failInternal(w, err)
 		return
 	}
-	writeJSON(w, map[string]interface{}{"joined": true, "athleteId": id})
+	writeJSON(w, map[string]interface{}{"joined": true, "athleteId": v.ID})
 }
 
 func handleChallengeRespond(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +380,7 @@ func handleChallengeRespond(w http.ResponseWriter, r *http.Request) {
 		ID       string `json:"id"`
 		Decision string `json:"decision"`
 	}
-	if err := decode(r, &body); err != nil {
+	if err := decode(r, w, &body); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -405,7 +407,7 @@ func handleChallengeRespond(w http.ResponseWriter, r *http.Request) {
 		_ = store.JoinChallenge(c.ID, c.OpponentID, c.OpponentName)
 	}
 	if err := store.UpdateChallenge(c); err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, c)
@@ -417,16 +419,18 @@ func handleChallengeProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := currentViewer(tokenFrom(r))
+	if v.ID == "" {
+		fail(w, 401, errNotAuthed.Error())
+		return
+	}
 	var body struct {
 		ChallengeID string  `json:"challengeId"`
-		AthleteID   string  `json:"athleteId"`
-		AthleteName string  `json:"athleteName"`
 		DistanceKm  float64 `json:"distanceKm"`
 		DurationSec int     `json:"durationSec"`
 		ElevationM  int     `json:"elevationM"`
 		FinishedAt  string  `json:"finishedAt"`
 	}
-	if err := decode(r, &body); err != nil {
+	if err := decode(r, w, &body); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -435,10 +439,9 @@ func handleChallengeProgress(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, errNoChallenge.Error())
 		return
 	}
-	id, name := athleteFor(v, body.AthleteID, body.AthleteName)
 	members, _ := store.ChallengeMembers(c.ID)
-	allowed := members[id] != "" || c.OwnerID == id ||
-		(c.OpponentID == id && c.InviteStatus == "accepted")
+	allowed := members[v.ID] != "" || c.OwnerID == v.ID ||
+		(c.OpponentID == v.ID && c.InviteStatus == "accepted")
 	if !allowed {
 		fail(w, 403, "join the challenge before posting progress")
 		return
@@ -469,13 +472,13 @@ func handleChallengeProgress(w http.ResponseWriter, r *http.Request) {
 		finished = nowISO()
 	}
 	row := ChallengeProgress{
-		ChallengeID: c.ID, AthleteID: id, AthleteName: name,
+		ChallengeID: c.ID, AthleteID: v.ID, AthleteName: v.Username,
 		DistanceKm: body.DistanceKm, DurationSec: body.DurationSec,
 		ElevationM: body.ElevationM, Completed: completed,
 		BestSeconds: best, FinishedAt: finished, UpdatedAt: nowISO(),
 	}
 	if err := store.UpsertProgress(row); err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, row)

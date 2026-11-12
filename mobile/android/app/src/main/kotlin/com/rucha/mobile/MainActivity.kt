@@ -450,6 +450,20 @@ class MainActivity : FlutterActivity() {
         val adapter = bluetoothAdapter ?: return false
         if (!adapter.isEnabled) return false
 
+        // Android 12+ requires runtime permission for BLUETOOTH_SCAN and BLUETOOTH_CONNECT.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val missingScan = ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED
+            val missingConnect = ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+            if (missingScan || missingConnect) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT),
+                    3001
+                )
+                return false
+            }
+        }
+
         discoveredWatches.clear()
         val scanner = adapter.bluetoothLeScanner ?: return false
 
@@ -480,6 +494,17 @@ class MainActivity : FlutterActivity() {
     private fun connectWatchGatt(address: String, name: String) {
         stopWatchScan()
         disconnectWatchGatt()
+
+        // Runtime permission check for Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                3001
+            )
+            return
+        }
 
         val adapter = bluetoothAdapter ?: return
         val device = try {
@@ -519,32 +544,52 @@ class MainActivity : FlutterActivity() {
                             gatt.setCharacteristicNotification(hrChar, true)
                             val descriptor = hrChar.getDescriptor(UUID_CLIENT_CHARACTERISTIC_CONFIG)
                             if (descriptor != null) {
-                                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                                gatt.writeDescriptor(descriptor)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    // API 33+: value passed directly to writeDescriptor
+                                    gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                    @Suppress("DEPRECATION")
+                                    gatt.writeDescriptor(descriptor)
+                                }
                             }
                         }
                     }
                 }
 
+                // Android < 13: value is in characteristic.value
+                @Suppress("DEPRECATION")
                 override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
                     if (characteristic?.uuid == UUID_HEART_RATE_MEASUREMENT) {
-                        val value = characteristic.value ?: return
-                        if (value.isNotEmpty()) {
-                            val flag = value[0].toInt()
-                            val bpm = if ((flag and 0x01) != 0) {
-                                (value[1].toInt() and 0xFF) or ((value[2].toInt() and 0xFF) shl 8)
-                            } else {
-                                value[1].toInt() and 0xFF
-                            }
-
-                            lastRecordedBpm = bpm
-                            val map = HashMap<String, Any>()
-                            map["type"] = "bpm"
-                            map["bpm"] = bpm
-                            map["device"] = connectedWatchName ?: "Smartwatch"
-                            runOnUiThread { watchEventSink?.success(map) }
-                        }
+                        @Suppress("DEPRECATION")
+                        parseBpmBytes(characteristic.value ?: return)
                     }
+                }
+
+                // Android 13+ (API 33): value is passed directly — old callback gets empty bytes
+                override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+                    if (characteristic.uuid == UUID_HEART_RATE_MEASUREMENT) {
+                        parseBpmBytes(value)
+                    }
+                }
+
+                private fun parseBpmBytes(value: ByteArray) {
+                    if (value.isEmpty()) return
+                    val flag = value[0].toInt()
+                    val bpm = if ((flag and 0x01) != 0 && value.size >= 3) {
+                        (value[1].toInt() and 0xFF) or ((value[2].toInt() and 0xFF) shl 8)
+                    } else if (value.size >= 2) {
+                        value[1].toInt() and 0xFF
+                    } else return
+
+                    if (bpm < 30 || bpm > 240) return
+                    lastRecordedBpm = bpm
+                    val map = HashMap<String, Any>()
+                    map["type"] = "bpm"
+                    map["bpm"] = bpm
+                    map["device"] = connectedWatchName ?: "Smartwatch"
+                    runOnUiThread { watchEventSink?.success(map) }
                 }
             })
         } catch (_: SecurityException) {}

@@ -121,6 +121,16 @@ CREATE TABLE IF NOT EXISTS club_members (
   joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (club_id, athlete_id)
 );
+
+CREATE TABLE IF NOT EXISTS community_posts (
+  id           TEXT PRIMARY KEY,
+  club_id      TEXT NOT NULL,
+  author_id    TEXT NOT NULL DEFAULT '',
+  kind         TEXT NOT NULL DEFAULT 'message',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload      JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_community_club ON community_posts (club_id, created_at DESC);
 `
 
 type PgStore struct{ db *sql.DB }
@@ -513,22 +523,72 @@ ON CONFLICT (id) DO UPDATE SET owner_id=EXCLUDED.owner_id,
 }
 
 func (p *PgStore) PopularAreas() ([]PopularArea, error) {
+	activities, err := p.Activities()
+	if err != nil {
+		return nil, err
+	}
+	places, err := p.Places()
+	if err != nil {
+		return nil, err
+	}
+	return clusterPopularAreas(activities, places), nil
+}
+
+func (p *PgStore) CommunityPosts(clubID string) ([]CommunityPost, error) {
 	rows, err := p.db.Query(`
-SELECT round(start_lat::numeric,3)::float8, round(start_lng::numeric,3)::float8, count(*)::int
-FROM activities GROUP BY 1,2 ORDER BY 3 DESC LIMIT 12`)
+SELECT payload FROM community_posts
+WHERE club_id=$1 ORDER BY created_at DESC LIMIT 200`, clubID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	places, _ := p.Places()
-	out := []PopularArea{}
+	out := []CommunityPost{}
 	for rows.Next() {
-		var a PopularArea
-		if err := rows.Scan(&a.Lat, &a.Lng, &a.RunCount); err != nil {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
 			return nil, err
 		}
-		a.Name, a.City = nearestPlace(places, a.Lat, a.Lng)
-		out = append(out, a)
+		var post CommunityPost
+		if err := json.Unmarshal(raw, &post); err == nil {
+			out = append(out, post)
+		}
+	}
+	return out, rows.Err()
+}
+
+func (p *PgStore) AddCommunityPost(post CommunityPost) error {
+	raw, err := json.Marshal(post)
+	if err != nil {
+		return err
+	}
+	_, err = p.db.Exec(`
+INSERT INTO community_posts (id,club_id,author_id,kind,created_at,payload)
+VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+ON CONFLICT (id) DO UPDATE SET payload=EXCLUDED.payload`,
+		post.ID, post.ClubID, post.AuthorID, post.Kind, parseTime(post.CreatedAt), string(raw))
+	return err
+}
+
+func (p *PgStore) CommunityFeed(limit int) ([]CommunityPost, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := p.db.Query(`
+SELECT payload FROM community_posts ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CommunityPost{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var post CommunityPost
+		if err := json.Unmarshal(raw, &post); err == nil {
+			out = append(out, post)
+		}
 	}
 	return out, rows.Err()
 }

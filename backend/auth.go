@@ -621,7 +621,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		PrivacyVersion string `json:"privacyVersion"`
 		TermsVersion   string `json:"termsVersion"`
 	}
-	if err := decode(r, &b); err != nil {
+	if err := decode(r, w, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -656,7 +656,7 @@ func handleCompleteProfile(w http.ResponseWriter, r *http.Request) {
 		PrivacyVersion string `json:"privacyVersion"`
 		TermsVersion   string `json:"termsVersion"`
 	}
-	if err := decode(r, &b); err != nil {
+	if err := decode(r, w, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -682,7 +682,7 @@ func handleConsent(w http.ResponseWriter, r *http.Request) {
 		PrivacyVersion string `json:"privacyVersion"`
 		TermsVersion   string `json:"termsVersion"`
 	}
-	if err := decode(r, &b); err != nil {
+	if err := decode(r, w, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -722,7 +722,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := decode(r, &b); err != nil {
+	if err := decode(r, w, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -756,7 +756,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 	v := currentViewer(tokenFrom(r))
 	list, err := auth.SearchUsers(r.URL.Query().Get("q"), v.ID)
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, list)
@@ -772,7 +772,7 @@ func handleFriends(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		st, err := auth.FriendState(v.ID)
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, st)
@@ -784,7 +784,7 @@ func handleFriends(w http.ResponseWriter, r *http.Request) {
 			EdgeID   string `json:"edgeId"`
 			Decision string `json:"decision"`
 		}
-		if err := decode(r, &b); err != nil {
+		if err := decode(r, w, &b); err != nil {
 			fail(w, 400, "invalid JSON")
 			return
 		}
@@ -824,7 +824,7 @@ func handleShares(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		list, err := auth.Shares(v.ID)
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, list)
@@ -835,7 +835,7 @@ func handleShares(w http.ResponseWriter, r *http.Request) {
 			Username      string `json:"username"`
 			Public        bool   `json:"public"`
 		}
-		if err := decode(r, &b); err != nil {
+		if err := decode(r, w, &b); err != nil {
 			fail(w, 400, "invalid JSON")
 			return
 		}
@@ -874,7 +874,7 @@ func handleVisibility(w http.ResponseWriter, r *http.Request) {
 		ID         string `json:"id"`
 		Visibility string `json:"visibility"`
 	}
-	if err := decode(r, &b); err != nil {
+	if err := decode(r, w, &b); err != nil {
 		fail(w, 400, "invalid JSON")
 		return
 	}
@@ -884,7 +884,7 @@ func handleVisibility(w http.ResponseWriter, r *http.Request) {
 	}
 	all, err := store.Activities()
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	for _, a := range all {
@@ -895,7 +895,7 @@ func handleVisibility(w http.ResponseWriter, r *http.Request) {
 			}
 			a.Visibility = b.Visibility
 			if err := store.AddActivity(a); err != nil {
-				fail(w, 500, err.Error())
+				failInternal(w, err)
 				return
 			}
 			writeJSON(w, a)

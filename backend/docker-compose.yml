@@ -18,15 +18,15 @@ services:
 
   api:
     build: .
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-rucha}:${POSTGRES_PASSWORD:-rucha}@db:5432/${POSTGRES_DB:-rucha}?sslmode=disable
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
-      STATIC_DIR: /app/public
       PORT: "8081"
+      STATIC_DIR: /app/public
     ports:
       - "8081:8081"
     volumes:
@@ -34,6 +34,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

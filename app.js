@@ -1158,7 +1158,7 @@
   function providerLabel(p) { return PROVIDER_LABEL[p] || 'your account'; }
   function authMinPassword() {
     const A = AUTH();
-    return +((auth.cfg && auth.cfg.minPassword) || (A && A.minPassword) || 5);
+    return +((auth.cfg && auth.cfg.minPassword) || (A && A.minPassword) || 8);
   }
   function resetAuthConsent() {
     // Consent must be an active choice, so the boxes always start empty.

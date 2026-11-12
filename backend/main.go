@@ -14,34 +14,79 @@ import (
 
 var store Store
 
+// connectPostgres blocks until Postgres is ready, retrying indefinitely with
+// capped back-off. The app never starts serving traffic in memory-only mode
+// when DATABASE_URL is set — this guarantees data is always persisted.
+func connectPostgres(url string) *PgStore {
+	backoff := 2 * time.Second
+	for attempt := 1; ; attempt++ {
+		ps, err := NewPgStore(url)
+		if err == nil {
+			log.Printf("connected to Postgres (attempt %d)", attempt)
+			return ps
+		}
+		log.Printf("Postgres not ready (attempt %d): %v — retrying in %v", attempt, err, backoff)
+		time.Sleep(backoff)
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+// keepAlive pings the DB every 30 s so the Fly.io free-tier machine never
+// idles out and drops the connection. If the ping fails it reconnects.
+func keepAlive(url string) {
+	go func() {
+		for {
+			time.Sleep(30 * time.Second)
+			ps, ok := store.(*PgStore)
+			if !ok {
+				// If we somehow ended up in memory mode and a URL is set, reconnect.
+				if url != "" {
+					log.Println("keepAlive: store is memory but DATABASE_URL is set — reconnecting")
+					ps = connectPostgres(url)
+					store = ps
+					if a, err := NewPgAuth(ps.db); err == nil {
+						auth = a
+					}
+				}
+				continue
+			}
+			if err := ps.db.Ping(); err != nil {
+				log.Printf("keepAlive: ping failed (%v) — reconnecting", err)
+				ps2 := connectPostgres(url)
+				store = ps2
+				if a, err := NewPgAuth(ps2.db); err == nil {
+					auth = a
+				}
+			}
+		}
+	}()
+}
+
 func main() {
 	var s Store
-	if url := os.Getenv("DATABASE_URL"); url != "" {
-		ps, err := NewPgStore(url)
-		if err != nil {
-			log.Printf("Postgres unavailable (%v); falling back to in-memory store", err)
-			s = NewMemStore()
-		} else {
-			log.Println("connected to Postgres")
-			s = ps
-		}
-	} else {
-		log.Println("DATABASE_URL not set; using in-memory store")
-		s = NewMemStore()
-	}
-	store = s
-	if ps, ok := s.(*PgStore); ok {
-		a, err := NewPgAuth(ps.db)
-		if err != nil {
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL != "" {
+		// Block here until Postgres is ready. The app will not start the HTTP
+		// server until the database is fully connected — no data is ever lost
+		// to the in-memory fallback when a DATABASE_URL is configured.
+		ps := connectPostgres(dbURL)
+		s = ps
+		if a, err := NewPgAuth(ps.db); err != nil {
 			log.Printf("auth tables unavailable (%v); falling back to memory auth", err)
 			auth = NewMemAuth()
 		} else {
 			auth = a
 		}
+		keepAlive(dbURL)
 	} else {
+		log.Println("DATABASE_URL not set; using in-memory store")
+		s = NewMemStore()
 		auth = NewMemAuth()
 	}
 
+	store = s
 	startTelegramBot()
 
 	staticDir := os.Getenv("STATIC_DIR")
@@ -68,6 +113,8 @@ func main() {
 	mux.HandleFunc("/api/segments", handleSegments)
 	mux.HandleFunc("/api/clubs", handleClubs)
 	mux.HandleFunc("/api/clubs/join", handleClubJoin)
+	mux.HandleFunc("/api/community/posts", handleCommunityPosts)
+	mux.HandleFunc("/api/community/feed", handleCommunityFeed)
 	mux.HandleFunc("/api/halloffame", handleHall)
 	mux.HandleFunc("/api/auth/config", handleAuthConfig)
 	mux.HandleFunc("/api/auth/username", handleUsernameCheck)
@@ -77,8 +124,13 @@ func main() {
 	mux.HandleFunc("/api/auth/consent", handleConsent)
 	mux.HandleFunc("/api/auth/telegram/start", handleTelegramStart)
 	mux.HandleFunc("/api/auth/telegram/verify", handleTelegramVerify)
-	mux.HandleFunc("/api/auth/google", handleGoogleLogin)
-	mux.HandleFunc("/api/auth/apple", handleAppleLogin)
+	// Google and Apple sign-in are disabled; RUCHA supports Telegram + username/password only.
+	mux.HandleFunc("/api/auth/google", func(w http.ResponseWriter, r *http.Request) {
+		fail(w, 503, "Google sign-in is not available on this server.")
+	})
+	mux.HandleFunc("/api/auth/apple", func(w http.ResponseWriter, r *http.Request) {
+		fail(w, 503, "Apple sign-in is not available on this server.")
+	})
 	mux.HandleFunc("/api/auth/logout", handleLogout)
 	mux.HandleFunc("/api/auth/me", handleMe)
 	mux.HandleFunc("/api/users", handleUsers)
@@ -158,9 +210,16 @@ func fail(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-func decode(r *http.Request, v interface{}) error {
+// failInternal logs the real error server-side and returns a generic 500 to
+// the client so internal database / path details never reach the wire.
+func failInternal(w http.ResponseWriter, err error) {
+	log.Printf("internal error: %v", err)
+	fail(w, 500, "An internal error occurred. Please try again.")
+}
+
+func decode(r *http.Request, w http.ResponseWriter, v interface{}) error {
 	defer r.Body.Close()
-	r.Body = http.MaxBytesReader(nil, r.Body, 32<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4 MB per request
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
@@ -173,7 +232,12 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		fail(w, 405, "GET only")
 		return
 	}
-	writeJSON(w, map[string]interface{}{"ok": true, "store": store.Kind(), "time": nowISO()})
+	storeKind := store.Kind()
+	writeJSON(w, map[string]interface{}{
+		"ok":    true,
+		"store": storeKind,
+		"time":  nowISO(),
+	})
 }
 
 func handleActivities(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +246,7 @@ func handleActivities(w http.ResponseWriter, r *http.Request) {
 		v := currentViewer(tokenFrom(r))
 		list, err := store.Activities()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		out := []Activity{}
@@ -199,9 +263,18 @@ func handleActivities(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var a Activity
-		if err := decode(r, &a); err != nil {
-			fail(w, 400, "invalid JSON: "+err.Error())
+		if err := decode(r, w, &a); err != nil {
+			fail(w, 400, "invalid JSON")
 			return
+		}
+		// Sanitise / validate user-supplied fields
+		a.Title = strings.TrimSpace(a.Title)
+		if len(a.Title) > 120 {
+			fail(w, 400, "title must be 120 characters or fewer")
+			return
+		}
+		if a.Title == "" {
+			a.Title = "Activity"
 		}
 		if a.ID == "" {
 			a.ID = fmt.Sprintf("act_%d", time.Now().UnixNano())
@@ -228,7 +301,7 @@ func handleActivities(w http.ResponseWriter, r *http.Request) {
 			a.Visibility = "private"
 		}
 		if err := store.AddActivity(a); err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, a)
@@ -243,7 +316,7 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 		v := currentViewer(tokenFrom(r))
 		list, err := store.Gallery()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		out := []GalleryCard{}
@@ -260,8 +333,13 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var g GalleryCard
-		if err := decode(r, &g); err != nil {
-			fail(w, 400, "invalid JSON: "+err.Error())
+		if err := decode(r, w, &g); err != nil {
+			fail(w, 400, "invalid JSON")
+			return
+		}
+		// Cap inline image data to 2 MB (base64-encoded)
+		if len(g.ImageData) > 2<<20 {
+			fail(w, 400, "image data exceeds 2 MB limit")
 			return
 		}
 		if g.ID == "" {
@@ -275,7 +353,7 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 			g.Visibility = "private"
 		}
 		if err := store.AddGallery(g); err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, g)
@@ -292,7 +370,7 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 		}
 		list, err := store.Gallery()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		found := false
@@ -311,7 +389,7 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := store.DeleteGallery(id); err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, map[string]bool{"deleted": true})
@@ -323,7 +401,7 @@ func handleGallery(w http.ResponseWriter, r *http.Request) {
 func handlePopular(w http.ResponseWriter, r *http.Request) {
 	list, err := store.PopularAreas()
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, list)
@@ -332,7 +410,7 @@ func handlePopular(w http.ResponseWriter, r *http.Request) {
 func handlePlaces(w http.ResponseWriter, r *http.Request) {
 	list, err := store.Places()
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, list)
@@ -343,7 +421,7 @@ func handleSegments(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		list, err := store.Segments()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, list)
@@ -354,7 +432,7 @@ func handleSegments(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var sg Segment
-		if err := decode(r, &sg); err != nil {
+		if err := decode(r, w, &sg); err != nil {
 			fail(w, 400, "invalid JSON: "+err.Error())
 			return
 		}
@@ -429,7 +507,7 @@ func handleSegments(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if err := store.AddSegment(sg); err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, sg)
@@ -465,7 +543,7 @@ func handleClubs(w http.ResponseWriter, r *http.Request) {
 		v := currentViewer(tokenFrom(r))
 		list, err := store.Clubs()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		out := []Club{}
@@ -485,7 +563,7 @@ func handleClubs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var c Club
-		if err := decode(r, &c); err != nil {
+		if err := decode(r, w, &c); err != nil {
 			fail(w, 400, "invalid JSON: "+err.Error())
 			return
 		}
@@ -514,11 +592,11 @@ func handleClubs(w http.ResponseWriter, r *http.Request) {
 		c.Members = 0
 		c.Joined = true
 		if err := store.AddClub(c); err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		if err := store.JoinClub(c.ID, v.ID, v.Username); err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		c.Members = 1
@@ -533,20 +611,25 @@ func handleClubJoin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 405, "POST only")
 		return
 	}
-	var body struct {
-		ClubID      string `json:"clubId"`
-		AthleteID   string `json:"athleteId"`
-		AthleteName string `json:"athleteName"`
-		Leave       bool   `json:"leave"`
+	v := currentViewer(tokenFrom(r))
+	if v.ID == "" {
+		fail(w, 401, errNotAuthed.Error())
+		return
 	}
-	if err := decode(r, &body); err != nil || body.ClubID == "" {
+	var body struct {
+		ClubID string `json:"clubId"`
+		Leave  bool   `json:"leave"`
+	}
+	if err := decode(r, w, &body); err != nil || body.ClubID == "" {
 		fail(w, 400, "clubId is required")
 		return
 	}
+	var club Club
 	found := false
 	list, _ := store.Clubs()
 	for _, c := range list {
 		if c.ID == body.ClubID {
+			club = c
 			found = true
 			break
 		}
@@ -555,27 +638,30 @@ func handleClubJoin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "club not found")
 		return
 	}
-	v := currentViewer(tokenFrom(r))
-	id, name := athleteFor(v, body.AthleteID, body.AthleteName)
 	if body.Leave {
-		if err := store.LeaveClub(body.ClubID, id); err != nil {
-			fail(w, 500, err.Error())
+		if err := store.LeaveClub(body.ClubID, v.ID); err != nil {
+			failInternal(w, err)
 			return
 		}
-		writeJSON(w, map[string]interface{}{"joined": false, "athleteId": id})
+		writeJSON(w, map[string]interface{}{"joined": false, "athleteId": v.ID})
 		return
 	}
-	if err := store.JoinClub(body.ClubID, id, name); err != nil {
-		fail(w, 500, err.Error())
+	members, _ := store.ClubMembers(body.ClubID)
+	wasMember := members[v.ID] != ""
+	if err := store.JoinClub(body.ClubID, v.ID, v.Username); err != nil {
+		failInternal(w, err)
 		return
 	}
-	writeJSON(w, map[string]interface{}{"joined": true, "athleteId": id})
+	if !wasMember {
+		publishJoinNotice(club, v.ID, v.Username)
+	}
+	writeJSON(w, map[string]interface{}{"joined": true, "athleteId": v.ID})
 }
 
 func handleHall(w http.ResponseWriter, r *http.Request) {
 	list, err := store.HallOfFame()
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, list)
@@ -589,7 +675,7 @@ func handleStorage(w http.ResponseWriter, r *http.Request) {
 	if ps, ok := store.(*PgStore); ok {
 		st, err := ps.StorageStats()
 		if err != nil {
-			fail(w, 500, err.Error())
+			failInternal(w, err)
 			return
 		}
 		writeJSON(w, st)

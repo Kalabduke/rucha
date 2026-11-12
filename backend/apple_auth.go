@@ -193,7 +193,7 @@ func handleAppleLogin(w http.ResponseWriter, r *http.Request) {
 		IdentityToken string `json:"identityToken"`
 		Name          string `json:"name"`
 	}
-	if err := decode(r, &b); err != nil || strings.TrimSpace(b.IdentityToken) == "" {
+	if err := decode(r, w, &b); err != nil || strings.TrimSpace(b.IdentityToken) == "" {
 		fail(w, 400, "missing Apple identity token")
 		return
 	}
@@ -212,7 +212,7 @@ func handleAppleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	u, tok, err := auth.SocialLogin("apple", sub, name, hint)
 	if err != nil {
-		fail(w, 500, err.Error())
+		failInternal(w, err)
 		return
 	}
 	writeJSON(w, map[string]interface{}{"user": u, "token": tok})

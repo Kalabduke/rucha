@@ -1,16 +1,18 @@
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../core/constants.dart';
 import '../core/theme.dart';
-import '../services/api_service.dart';
-import '../services/tracking_service.dart';
 import '../models/activity.dart';
+import '../services/activity_store.dart';
+import '../services/tracking_service.dart';
 import '../widgets/metric_card.dart';
-import '../widgets/rucha_logo.dart';
 import 'run_card_screen.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends StatelessWidget {
   final VoidCallback onStartRecording;
   final ValueChanged<int>? onNavigateTo;
 
@@ -20,526 +22,662 @@ class DashboardScreen extends StatefulWidget {
     this.onNavigateTo,
   });
 
-  @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
-}
-
-class _DashboardScreenState extends State<DashboardScreen> {
-  List<Activity> _recentActivities = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    final api = context.read<ApiService>();
-    final acts = await api.fetchActivities();
-    if (mounted) {
-      setState(() {
-        _recentActivities = acts;
-        _isLoading = false;
-      });
-    }
-  }
-
   String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
     return 'Good evening';
   }
 
   @override
   Widget build(BuildContext context) {
     final tracking = context.watch<TrackingService>();
-    final city = RuchaConstants.cities[tracking.selectedCity] ?? RuchaConstants.cities['addis']!;
+    final store = context.watch<ActivityStore>();
+    final city = RuchaConstants.cities[tracking.selectedCity] ??
+        RuchaConstants.cities['addis']!;
+    final stats = store.last7DaysStats;
+    final recent = store.activities.take(5).toList();
+    // Per-day km for the current Mon–Sun week (7 values)
+    final weekBuckets = store.weeklyVolume(weeks: 1);
+    final weekVols = weekBuckets.isNotEmpty
+        ? List.generate(7, (i) {
+            final day = weekBuckets.first.weekStart.add(Duration(days: i));
+            return store
+                .statsFor(from: day, to: day.add(const Duration(days: 1)))
+                .distanceKm;
+          })
+        : List<double>.filled(7, 0);
 
-    return Scaffold(
-      appBar: AppBar(
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(2.5),
-          child: Row(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
-              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
-              Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
-            ],
-          ),
-        ),
-        title: Row(
-          children: const [
-            RuchaLogo(size: 26, showText: false, showFlag: false),
-            SizedBox(width: 8),
-            Text(RuchaConstants.appName),
-          ],
-        ),
-        actions: [
-          // City selector button
-          PopupMenuButton<String>(
-            initialValue: tracking.selectedCity,
-            onSelected: (val) => tracking.setCity(val),
-            itemBuilder: (context) => RuchaConstants.cities.values.map((c) {
-              return PopupMenuItem<String>(
-                value: c.id,
-                child: Text('${c.name} (${c.baseEle.round()}m)'),
-              );
-            }).toList(),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: RuchaTheme.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: RuchaTheme.border),
-              ),
-              child: Row(
+              // ── 1. Greeting + city ─────────────────────────────────────────
+              Row(
                 children: [
-                  const Icon(CupertinoIcons.location_solid, size: 12, color: RuchaTheme.accentGreen),
-                  const SizedBox(width: 4),
-                  Text(
-                    city.name,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _greeting(),
+                          style: const TextStyle(
+                            color: RuchaTheme.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Ready to run?',
+                          style: TextStyle(
+                            color: RuchaTheme.textPrimary,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.8,
+                            height: 1.1,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const Icon(Icons.arrow_drop_down, size: 16),
+                  // Auto-detected city chip
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: RuchaTheme.surface2,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: RuchaTheme.accentGreen,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          city.name,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: RuchaTheme.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(width: 14),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Greeting Banner
-                Container(
-                  padding: const EdgeInsets.all(20),
+
+              const SizedBox(height: 20),
+
+              // ── 2. Quick-start hero card ────────────────────────────────────
+              GestureDetector(
+                onTap: onStartRecording,
+                child: Container(
+                  padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: RuchaTheme.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: RuchaTheme.border),
-                    gradient: LinearGradient(
-                      colors: [
-                        RuchaTheme.surface,
-                        RuchaTheme.accentGreen.withOpacity(0.08),
-                      ],
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: const LinearGradient(
+                      colors: [RuchaTheme.accent, Color(0xFFE84E0A)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _greeting(),
-                            style: const TextStyle(
-                              color: RuchaTheme.textSecondary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: RuchaTheme.surface2,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              city.tag,
-                              style: const TextStyle(fontSize: 10, color: RuchaTheme.accentGold, fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Ready for your run today?',
-                        style: TextStyle(
-                          color: RuchaTheme.textPrimary,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      ElevatedButton.icon(
-                        onPressed: widget.onStartRecording,
-                        icon: const Icon(CupertinoIcons.play_arrow_solid, size: 18),
-                        label: const Text('Start Live Track'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // RUCHA Hub: 1-click access to Gallery, Segments, Community, Challenges
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'RUCHA ATHLETE HUB',
-                      style: TextStyle(
-                        color: RuchaTheme.textSecondary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    Text(
-                      'Explore Features',
-                      style: TextStyle(
-                        color: RuchaTheme.accentGold.withOpacity(0.8),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => widget.onNavigateTo?.call(4), // Gallery
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: RuchaTheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: RuchaTheme.border),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(
-                                  color: RuchaTheme.accentCoral.withOpacity(0.18),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(CupertinoIcons.photo_on_rectangle, size: 16, color: RuchaTheme.accentCoral),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text('Run Cards', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
-                              const Text('Studio', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => widget.onNavigateTo?.call(5), // Segments
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: RuchaTheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: RuchaTheme.border),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(
-                                  color: RuchaTheme.accentGreen.withOpacity(0.18),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.terrain, size: 16, color: RuchaTheme.accentGreen),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text('Segments', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
-                              const Text('Trails', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => widget.onNavigateTo?.call(7), // Challenges
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: RuchaTheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: RuchaTheme.border),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(
-                                  color: RuchaTheme.accentGold.withOpacity(0.18),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(CupertinoIcons.flag_fill, size: 16, color: RuchaTheme.accentGold),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text('Prizes', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
-                              const Text('Duels', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => widget.onNavigateTo?.call(6), // Community
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: RuchaTheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: RuchaTheme.border),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(
-                                  color: Colors.blueAccent.withOpacity(0.18),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(CupertinoIcons.person_3_fill, size: 16, color: Colors.blueAccent),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text('Clubs', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
-                              const Text('Athletes', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                // Upcoming Ethiopian Holiday Notice
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: RuchaTheme.surface2.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: RuchaTheme.border),
+                    boxShadow: RuchaTheme.cardShadow(
+                        color: RuchaTheme.accent, opacity: 0.35),
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: RuchaTheme.accentGold.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(CupertinoIcons.calendar, size: 18, color: RuchaTheme.accentGold),
-                      ),
-                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              RuchaConstants.holidays[0]['name']!,
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                            const Text(
+                              'QUICK START',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                              ),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'RUN',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 36,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1.0,
+                                height: 1.0,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             Text(
-                              '${RuchaConstants.holidays[0]['date']} · ${RuchaConstants.holidays[0]['desc']}',
-                              style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 11),
+                              '${city.name} · ${city.baseEle.round()} m',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
+                        ),
+                      ),
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.play_arrow_solid,
+                          color: Colors.white,
+                          size: 26,
                         ),
                       ),
                     ],
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-                // This Week's Training Stats
-                const Text(
-                  'LAST 7 DAYS',
-                  style: TextStyle(
-                    color: RuchaTheme.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                const SizedBox(height: 8),
+              // ── 3. Weekly volume bar chart ─────────────────────────────────
+              _WeeklyChart(volumes: weekVols),
 
-                GridView.count(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 2.1,
-                  children: const [
-                    MetricCard(
-                      label: 'Distance',
-                      value: '24.8',
-                      unit: 'km',
-                      icon: CupertinoIcons.map_pin_ellipse,
-                    ),
-                    MetricCard(
-                      label: 'Time',
-                      value: '2:14:30',
-                      unit: '',
-                      icon: CupertinoIcons.clock,
-                      iconColor: RuchaTheme.accentGold,
-                    ),
-                    MetricCard(
-                      label: 'Elevation',
-                      value: '+410',
-                      unit: 'm',
-                      icon: CupertinoIcons.arrow_up_right,
-                    ),
-                    MetricCard(
-                      label: 'Activities',
-                      value: '4',
-                      unit: 'runs',
-                      icon: CupertinoIcons.flame,
-                      iconColor: RuchaTheme.accentCoral,
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 20),
 
-                const SizedBox(height: 24),
-
-                // Recent Activities Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // ── 4. 7-day stats — hero orange + 2 neutral stacked ──────────
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'RECENT ACTIVITIES',
-                      style: TextStyle(
-                        color: RuchaTheme.textSecondary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
+                    Expanded(
+                      flex: 3,
+                      child: MetricCard(
+                        label: 'Duration',
+                        value: RuchaConstants.formatDuration(
+                            stats.durationSeconds),
+                        unit: 'hrs',
+                        icon: CupertinoIcons.stopwatch_fill,
+                        accent: RuchaTheme.accent,
                       ),
                     ),
-                    if (_isLoading)
-                      const CupertinoActivityIndicator(radius: 8),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: MetricCard(
+                              label: 'Calories',
+                              value: stats.activityCount > 0
+                                  ? '${(stats.distanceKm * 62).round()}'
+                                  : '—',
+                              unit: 'kcal',
+                              icon: CupertinoIcons.flame_fill,
+                              iconColor: RuchaTheme.accentRed,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Expanded(
+                            child: MetricCard(
+                              label: 'Distance',
+                              value: stats.distanceKm.toStringAsFixed(1),
+                              unit: 'km',
+                              icon: CupertinoIcons.location_fill,
+                              iconColor: RuchaTheme.accentBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 10),
+              ),
 
-                if (_recentActivities.isEmpty && !_isLoading)
-                  Container(
-                    padding: const EdgeInsets.all(28),
-                    decoration: BoxDecoration(
-                      color: RuchaTheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: RuchaTheme.border),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricCard(
+                      label: 'Elevation',
+                      value: '+${stats.elevationGain.round()}',
+                      unit: 'm',
+                      icon: Icons.landscape_rounded,
+                      iconColor: RuchaTheme.accentGreen,
                     ),
-                    alignment: Alignment.center,
-                    child: Column(
-                      children: [
-                        const Icon(Icons.directions_walk, size: 40, color: RuchaTheme.textSecondary),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'No activities recorded yet',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Tap Start Live Track to log your first Ethiopian run!',
-                          style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: MetricCard(
+                      label: 'Activities',
+                      value: '${stats.activityCount}',
+                      unit: stats.activityCount == 1 ? 'run' : 'runs',
+                      icon: CupertinoIcons.bolt_fill,
+                      iconColor: RuchaTheme.accentGold,
                     ),
-                  )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _recentActivities.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, idx) {
-                      final a = _recentActivities[idx];
-                      return Container(
-                        padding: const EdgeInsets.all(14),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // ── 5. Feature hub ─────────────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: _HubCard(
+                      icon: Icons.map_outlined,
+                      color: RuchaTheme.accentBlue,
+                      title: 'Explore',
+                      onTap: () => onNavigateTo?.call(1),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _HubCard(
+                      icon: Icons.photo_library_rounded,
+                      color: RuchaTheme.accent,
+                      title: 'Cards',
+                      onTap: () => onNavigateTo?.call(4),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _HubCard(
+                      icon: Icons.terrain_rounded,
+                      color: RuchaTheme.accentGreen,
+                      title: 'Segments',
+                      onTap: () => onNavigateTo?.call(5),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _HubCard(
+                      icon: Icons.groups_2_rounded,
+                      color: RuchaTheme.accentGold,
+                      title: 'Community',
+                      onTap: () => onNavigateTo?.call(6),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // ── 6. Recent activities ───────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'RECENT',
+                    style: TextStyle(
+                      color: RuchaTheme.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  if (recent.isNotEmpty)
+                    GestureDetector(
+                      onTap: () => onNavigateTo?.call(3),
+                      child: const Text(
+                        'All',
+                        style: TextStyle(
+                          color: RuchaTheme.accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              if (recent.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  decoration: BoxDecoration(
+                    color: RuchaTheme.surface2,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  alignment: Alignment.center,
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: RuchaTheme.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: RuchaTheme.border),
+                          color: RuchaTheme.accent.withOpacity(0.12),
+                          shape: BoxShape.circle,
                         ),
-                        child: Row(
+                        child: const Icon(Icons.directions_run_rounded,
+                            size: 32, color: RuchaTheme.accent),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'No activities yet',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: RuchaTheme.textPrimary),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: recent.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) =>
+                      _RecentActivityTile(activity: recent[index]),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Weekly bar chart ─────────────────────────────────────────────────────────
+
+class _WeeklyChart extends StatelessWidget {
+  final List<double> volumes; // km per day, 7 entries, oldest first
+
+  const _WeeklyChart({required this.volumes});
+
+  @override
+  Widget build(BuildContext context) {
+    final days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final todayIndex = DateTime.now().weekday - 1; // 0=Mon
+    final maxVol = volumes.fold(0.0, max);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface2,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: RuchaTheme.cardShadow(),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'THIS WEEK',
+                style: TextStyle(
+                  color: RuchaTheme.textSecondary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              Text(
+                '${volumes.fold(0.0, (s, v) => s + v).toStringAsFixed(1)} km',
+                style: const TextStyle(
+                  color: RuchaTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 60,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(7, (i) {
+                final vol = i < volumes.length ? volumes[i] : 0.0;
+                final frac = maxVol > 0 ? (vol / maxVol).clamp(0.0, 1.0) : 0.0;
+                final isToday = i == todayIndex;
+                final hasActivity = vol > 0;
+                final barColor = isToday
+                    ? RuchaTheme.accent
+                    : hasActivity
+                        ? RuchaTheme.accent.withOpacity(0.45)
+                        : const Color(0xFF2A2A3A);
+                final barH = max(4.0, frac * 50.0);
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Stack(
+                          alignment: Alignment.bottomCenter,
                           children: [
+                            // Background track
                             Container(
-                              padding: const EdgeInsets.all(10),
+                              height: 50,
                               decoration: BoxDecoration(
-                                color: a.type == 'ride'
-                                    ? RuchaTheme.accentGreen.withOpacity(0.15)
-                                    : RuchaTheme.accentCoral.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                a.type == 'ride' ? Icons.directions_bike : Icons.directions_run,
-                                color: a.type == 'ride' ? RuchaTheme.accentGreen : RuchaTheme.accentCoral,
-                                size: 20,
+                                color: const Color(0xFF2A2A3A),
+                                borderRadius: BorderRadius.circular(6),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    a.title,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    '${a.distance.toStringAsFixed(2)} km · ${RuchaConstants.formatDuration(a.duration)} · +${a.elevation.round()}m',
-                                    style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
-                                  ),
-                                ],
+                            // Filled portion
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeOut,
+                              height: barH,
+                              decoration: BoxDecoration(
+                                color: barColor,
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: isToday
+                                    ? [
+                                        BoxShadow(
+                                          color: RuchaTheme.accent
+                                              .withOpacity(0.4),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ]
+                                    : null,
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(CupertinoIcons.sparkles, color: RuchaTheme.accentGold, size: 18),
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => RunCardScreen(activity: a)),
-                                );
-                              },
                             ),
                           ],
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
-                const SizedBox(height: 30),
-              ],
+                );
+              }),
             ),
           ),
+          const SizedBox(height: 6),
+          Row(
+            children: List.generate(7, (i) {
+              final isToday = i == todayIndex;
+              return Expanded(
+                child: Text(
+                  days[i],
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color:
+                        isToday ? RuchaTheme.accent : RuchaTheme.textSecondary,
+                    fontSize: 10,
+                    fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Hub card ─────────────────────────────────────────────────────────────────
+
+class _HubCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final VoidCallback onTap;
+
+  const _HubCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: RuchaTheme.surface2,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: RuchaTheme.cardShadow(),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, Color.lerp(color, Colors.black, 0.25)!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(icon, size: 20, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+                color: RuchaTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Recent activity tile ──────────────────────────────────────────────────────
+
+class _RecentActivityTile extends StatelessWidget {
+  final Activity activity;
+  const _RecentActivityTile({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final isRide = activity.type == 'ride';
+    final isWalk = activity.type == 'walk';
+    final accent = isRide
+        ? RuchaTheme.accentGreen
+        : isWalk
+            ? RuchaTheme.accentGold
+            : RuchaTheme.accent;
+    final icon = isRide
+        ? Icons.directions_bike_rounded
+        : isWalk
+            ? Icons.directions_walk_rounded
+            : Icons.directions_run_rounded;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => RunCardScreen(activity: activity)),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: RuchaTheme.surface2,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: RuchaTheme.cardShadow(),
+        ),
+        child: Row(
+          children: [
+            // Coloured icon pill
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [accent, Color.lerp(accent, Colors.black, 0.3)!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    activity.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: RuchaTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${activity.distance.toStringAsFixed(2)} km · '
+                    '${RuchaConstants.formatDuration(activity.duration)} · '
+                    '+${activity.elevation.round()} m',
+                    style: const TextStyle(
+                      color: RuchaTheme.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(CupertinoIcons.chevron_right,
+                size: 15, color: RuchaTheme.textSecondary),
+          ],
         ),
       ),
     );

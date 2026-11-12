@@ -95,6 +95,11 @@ class Activity {
   final int? maxHr;
   final String? ownerId;
   final String? ownerName;
+  final double? startLat;
+  final double? startLng;
+  final double? endLat;
+  final double? endLng;
+  final double avgGpsAccuracyM;
 
   Activity({
     required this.id,
@@ -113,7 +118,17 @@ class Activity {
     this.maxHr,
     this.ownerId,
     this.ownerName,
+    this.startLat,
+    this.startLng,
+    this.endLat,
+    this.endLng,
+    this.avgGpsAccuracyM = 0.0,
   });
+
+  double? get effectiveStartLat => startLat ?? (track.isNotEmpty ? track.first.lat : null);
+  double? get effectiveStartLng => startLng ?? (track.isNotEmpty ? track.first.lng : null);
+  double? get effectiveEndLat => endLat ?? (track.isNotEmpty ? track.last.lat : null);
+  double? get effectiveEndLng => endLng ?? (track.isNotEmpty ? track.last.lng : null);
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -132,7 +147,68 @@ class Activity {
     if (maxHr != null) 'maxHr': maxHr,
     if (ownerId != null) 'ownerId': ownerId,
     if (ownerName != null) 'ownerName': ownerName,
+    if (startLat != null) 'startLat': startLat,
+    if (startLng != null) 'startLng': startLng,
+    if (endLat != null) 'endLat': endLat,
+    if (endLng != null) 'endLng': endLng,
+    if (avgGpsAccuracyM > 0) 'gpsAccuracyM': avgGpsAccuracyM,
   };
+
+  /// The payload accepted by the RUCHA server. It differs from local storage:
+  /// the server uses distanceKm/durationSec/elevationGainM and real
+  /// start/end coordinates, which power automatic popular-area clustering.
+  Map<String, dynamic> toServerJson({
+    String athleteId = '',
+    String athleteName = '',
+    String visibility = 'private',
+  }) {
+    final first = track.isNotEmpty ? track.first : null;
+    final last = track.isNotEmpty ? track.last : null;
+    final sLat = startLat ?? first?.lat ?? 0;
+    final sLng = startLng ?? first?.lng ?? 0;
+    final eLat = endLat ?? last?.lat ?? sLat;
+    final eLng = endLng ?? last?.lng ?? sLng;
+    return {
+      'id': id,
+      'title': title,
+      'type': type,
+      'athleteId': athleteId,
+      'athleteName': athleteName.isNotEmpty ? athleteName : (ownerName ?? 'RUCHA athlete'),
+      'city': city,
+      'startLat': sLat,
+      'startLng': sLng,
+      'endLat': eLat,
+      'endLng': eLng,
+      'distanceKm': distance,
+      'durationSec': duration,
+      'paceSecPerKm': pace,
+      'elevationGainM': elevation.round(),
+      'calories': calories.round(),
+      'avgHr': avgHr,
+      'hrSource': avgHr == null ? 'none' : 'Bluetooth HR',
+      if (maxHr != null) 'maxHr': maxHr,
+      'gpsAccuracyM': avgGpsAccuracyM,
+      'source': 'gps',
+      'track': track
+          .map((p) => {
+                'lat': p.lat,
+                'lng': p.lng,
+                'ele': p.ele,
+                'd': p.d,
+                't': p.t,
+                'accuracy': p.accuracy,
+                if (p.hr != null) 'hr': p.hr,
+                if (p.cad != null) 'cad': p.cad,
+                if (p.pw != null) 'pw': p.pw,
+              })
+          .toList(),
+      'startedAt': date.toUtc().toIso8601String(),
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      if (ownerId != null) 'ownerId': ownerId,
+      if (ownerName != null) 'ownerName': ownerName,
+      'visibility': visibility,
+    };
+  }
 
   factory Activity.fromJson(Map<String, dynamic> json) {
     var rawTrack = json['track'];
@@ -148,10 +224,11 @@ class Activity {
     }
 
     DateTime parsedDate;
-    if (json['date'] is int) {
-      parsedDate = DateTime.fromMillisecondsSinceEpoch(json['date'] as int);
-    } else if (json['date'] is String) {
-      parsedDate = DateTime.tryParse(json['date'] as String) ?? DateTime.now();
+    final rawDate = json['date'] ?? json['startedAt'] ?? json['createdAt'];
+    if (rawDate is int) {
+      parsedDate = DateTime.fromMillisecondsSinceEpoch(rawDate);
+    } else if (rawDate is String) {
+      parsedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
     } else {
       parsedDate = DateTime.now();
     }
@@ -160,10 +237,18 @@ class Activity {
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Activity',
       type: json['type']?.toString() ?? 'run',
-      distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
-      duration: (json['duration'] as num?)?.toInt() ?? 0,
-      elevation: (json['elevation'] as num?)?.toDouble() ?? 0.0,
-      pace: (json['pace'] as num?)?.toDouble() ?? 0.0,
+      distance: (json['distance'] as num?)?.toDouble() ??
+          (json['distanceKm'] as num?)?.toDouble() ??
+          0.0,
+      duration: (json['duration'] as num?)?.toInt() ??
+          (json['durationSec'] as num?)?.toInt() ??
+          0,
+      elevation: (json['elevation'] as num?)?.toDouble() ??
+          (json['elevationGainM'] as num?)?.toDouble() ??
+          0.0,
+      pace: (json['pace'] as num?)?.toDouble() ??
+          (json['paceSecPerKm'] as num?)?.toDouble() ??
+          0.0,
       calories: (json['calories'] as num?)?.toDouble() ?? 0.0,
       date: parsedDate,
       city: json['city']?.toString() ?? 'addis',
@@ -173,6 +258,15 @@ class Activity {
       maxHr: (json['maxHr'] as num?)?.toInt(),
       ownerId: json['ownerId']?.toString(),
       ownerName: json['ownerName']?.toString(),
+      startLat: (json['startLat'] as num?)?.toDouble() ??
+          (trackPoints.isNotEmpty ? trackPoints.first.lat : null),
+      startLng: (json['startLng'] as num?)?.toDouble() ??
+          (trackPoints.isNotEmpty ? trackPoints.first.lng : null),
+      endLat: (json['endLat'] as num?)?.toDouble() ??
+          (trackPoints.isNotEmpty ? trackPoints.last.lat : null),
+      endLng: (json['endLng'] as num?)?.toDouble() ??
+          (trackPoints.isNotEmpty ? trackPoints.last.lng : null),
+      avgGpsAccuracyM: (json['gpsAccuracyM'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

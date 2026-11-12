@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/activity.dart';
 import '../core/theme.dart';
+import 'route_path.dart';
 
 class RoutePainter extends CustomPainter {
   final List<TrackPoint> points;
@@ -30,8 +31,8 @@ class RoutePainter extends CustomPainter {
     }
 
     final isRide = activityType.toLowerCase() == 'ride';
-    final primaryColor = routeColor ?? (isRide ? const Color(0xFF00E676) : const Color(0xFFFC4C02));
-    final secondaryColor = isRide ? const Color(0xFF00B0FF) : const Color(0xFFFF9100);
+    final primaryColor = routeColor ??
+        (isRide ? const Color(0xFF00E676) : const Color(0xFFFC4C02));
 
     if (points.length == 1) {
       final center = Offset(size.width / 2, size.height / 2);
@@ -68,76 +69,31 @@ class RoutePainter extends CustomPainter {
 
     Offset toOffset(TrackPoint pt) {
       final x = offsetX + (pt.lng - minLng) * scale;
-      final y = size.height - (offsetY + (pt.lat - minLat) * scale); // Invert Y for screen
+      final y = size.height -
+          (offsetY + (pt.lat - minLat) * scale); // Invert Y for screen
       return Offset(x, y);
     }
 
     final screenPoints = points.map(toOffset).toList();
+    final path = buildSmoothRoutePath(screenPoints);
 
-    final path = Path();
-    path.moveTo(screenPoints.first.dx, screenPoints.first.dy);
-    for (int i = 1; i < screenPoints.length; i++) {
-      path.lineTo(screenPoints[i].dx, screenPoints[i].dy);
-    }
-
-    // 1. Strava-Style Dark Drop Shadow / Depth
-    final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.5)
-      ..strokeWidth = 10.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0);
-    canvas.drawPath(path, shadowPaint);
-
-    // 2. Strava Vibrant Outer Glow (Emulates PWA app.js line 489: 11px wide glow)
-    final glowPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [primaryColor.withOpacity(0.4), secondaryColor.withOpacity(0.4)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..strokeWidth = 11.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    canvas.drawPath(path, glowPaint);
-
-    // 3. Primary Route Polyline (4.2px vibrant line)
-    final linePaint = Paint()
-      ..shader = LinearGradient(
-        colors: [primaryColor, secondaryColor],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..strokeWidth = 4.2
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    canvas.drawPath(path, linePaint);
-
-    // 4. Strava High-Contrast Core Highlight (1.4px white highlight)
-    final corePaint = Paint()
-      ..color = Colors.white.withOpacity(0.7)
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    canvas.drawPath(path, corePaint);
+    // Strava-style glow route on the card
+    drawStravaRoute(canvas, path, primaryColor, strokeWidth: 4.6);
 
     if (showPoints) {
       final startPt = screenPoints.first;
       final finishPt = screenPoints.last;
 
-      // Start Pin (🟢 Strava Start Marker with white ring)
-      canvas.drawCircle(startPt, 8.0, Paint()..color = Colors.black45);
+      // Start marker (green with a white ring).
+      canvas.drawCircle(startPt, 8.0, Paint()..color = Colors.black26);
       canvas.drawCircle(startPt, 7.0, Paint()..color = Colors.white);
       canvas.drawCircle(startPt, 5.0, Paint()..color = const Color(0xFF00C853));
 
-      // Finish Pin (🏁 / 🔴 Strava Finish Marker with white ring)
-      canvas.drawCircle(finishPt, 8.0, Paint()..color = Colors.black45);
+      // Finish marker (red with a white ring).
+      canvas.drawCircle(finishPt, 8.0, Paint()..color = Colors.black26);
       canvas.drawCircle(finishPt, 7.0, Paint()..color = Colors.white);
-      canvas.drawCircle(finishPt, 5.0, Paint()..color = const Color(0xFFFF1744));
+      canvas.drawCircle(
+          finishPt, 5.0, Paint()..color = const Color(0xFFFF1744));
     }
   }
 

@@ -1,7 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/constants.dart';
 import '../core/theme.dart';
+import '../services/activity_store.dart';
+import '../services/auth_service.dart';
 
 class SegmentItem {
   final String id;
@@ -9,7 +16,8 @@ class SegmentItem {
   final String city;
   final double distance;
   final double elevationGain;
-  final String category; // 'HC', 'Cat 1', 'Cat 2', 'Cat 3', 'Cat 4'
+  final String category;
+  final String type;
   final int attempts;
   final int bestSec;
   final String bestAthlete;
@@ -21,10 +29,37 @@ class SegmentItem {
     required this.distance,
     required this.elevationGain,
     required this.category,
+    this.type = 'run',
     required this.attempts,
     required this.bestSec,
     required this.bestAthlete,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'city': city,
+        'distance': distance,
+        'elevationGain': elevationGain,
+        'category': category,
+        'type': type,
+        'attempts': attempts,
+        'bestSec': bestSec,
+        'bestAthlete': bestAthlete,
+      };
+
+  factory SegmentItem.fromJson(Map<String, dynamic> json) => SegmentItem(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? 'Segment',
+        city: json['city']?.toString() ?? 'addis',
+        distance: (json['distance'] as num?)?.toDouble() ?? 0,
+        elevationGain: (json['elevationGain'] as num?)?.toDouble() ?? 0,
+        category: json['category']?.toString() ?? 'Cat 4',
+        type: json['type']?.toString() ?? 'run',
+        attempts: (json['attempts'] as num?)?.toInt() ?? 0,
+        bestSec: (json['bestSec'] as num?)?.toInt() ?? 0,
+        bestAthlete: json['bestAthlete']?.toString() ?? 'Athlete',
+      );
 }
 
 class SegmentsScreen extends StatefulWidget {
@@ -35,201 +70,322 @@ class SegmentsScreen extends StatefulWidget {
 }
 
 class _SegmentsScreenState extends State<SegmentsScreen> {
-  final List<SegmentItem> _segments = [
-    SegmentItem(
-      id: 's1',
-      name: 'Entoto Ridge Highway Sprint',
-      city: 'Addis Ababa',
-      distance: 2.4,
-      elevationGain: 185,
-      category: 'Cat 2',
-      attempts: 412,
-      bestSec: 540, // 9:00
-      bestAthlete: 'Kenensa B.',
-    ),
-    SegmentItem(
-      id: 's2',
-      name: 'Bishoftu Lake View Mile',
-      city: 'Bishoftu',
-      distance: 1.6,
-      elevationGain: 35,
-      category: 'Cat 4',
-      attempts: 289,
-      bestSec: 285, // 4:45
-      bestAthlete: 'Derartu T.',
-    ),
-    SegmentItem(
-      id: 's3',
-      name: 'Meskel Square Criterium Loop',
-      city: 'Addis Ababa',
-      distance: 1.2,
-      elevationGain: 12,
-      category: 'Cat 4',
-      attempts: 1230,
-      bestSec: 192, // 3:12
-      bestAthlete: 'Haile G.',
-    ),
-    SegmentItem(
-      id: 's4',
-      name: 'Lake Tana Waterfront Dash',
-      city: 'Bahir Dar',
-      distance: 3.8,
-      elevationGain: 28,
-      category: 'Cat 3',
-      attempts: 198,
-      bestSec: 720,
-      bestAthlete: 'Tirunesh D.',
-    ),
-  ];
+  static const _prefsKey = 'rucha_segments_v1';
+
+  List<SegmentItem> _segments = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSegments();
+  }
+
+  Future<void> _loadSegments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKey);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          _segments = decoded
+              .whereType<Map>()
+              .map((item) =>
+                  SegmentItem.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _loading = false);
+  }
+
+  Future<void> _saveSegments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefsKey,
+        jsonEncode(_segments.map((segment) => segment.toJson()).toList()),
+      );
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
+    final store = context.watch<ActivityStore>();
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text('Course Segments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(CupertinoIcons.add_circled, color: RuchaTheme.accentGreen),
-            onPressed: () => _openCreateSegmentDialog(context),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _segments.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, idx) {
-          final s = _segments[idx];
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: RuchaTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: RuchaTheme.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: RuchaTheme.accentGreen.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        s.category,
-                        style: const TextStyle(
-                          color: RuchaTheme.accentGreen,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${s.attempts} attempts',
-                      style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
-                    ),
-                  ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _segments.isEmpty
+              ? _buildEmptyState(store)
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+                  itemCount: _segments.length + 1,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    if (index == 0) return _buildIntro(store);
+                    return _segmentCard(_segments[index - 1]);
+                  },
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  s.name,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${s.city} · ${s.distance.toStringAsFixed(1)} km · +${s.elevationGain.round()} m climb',
-                  style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: RuchaTheme.surface2.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(CupertinoIcons.star_fill, size: 14, color: RuchaTheme.accentGold),
-                          const SizedBox(width: 6),
-                          Text(
-                            'CR: ${s.bestAthlete}',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        RuchaConstants.formatDuration(s.bestSec),
-                        style: const TextStyle(
-                          color: RuchaTheme.accentGold,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _createSegment(context, store),
+        backgroundColor: RuchaTheme.accent,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('Create segment'),
       ),
     );
   }
 
-  void _openCreateSegmentDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: RuchaTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.terrain, color: RuchaTheme.accentGreen),
-            SizedBox(width: 8),
-            Text('Create a Segment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        content: const Text(
-          'Turn any of your recorded activities into a course other athletes can race. Start and finish coordinates are matched automatically within 150 meters.',
-          style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: RuchaTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Record an activity first to turn it into a segment!')),
-              );
-            },
-            child: const Text('Select Activity'),
+  Widget _buildIntro(ActivityStore store) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.terrain, color: RuchaTheme.accentGreen, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${_segments.length} ${_segments.length == 1 ? 'segment' : 'segments'}',
+              style: const TextStyle(
+                  color: RuchaTheme.textSecondary, fontSize: 12),
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildEmptyState(ActivityStore store) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.terrain,
+                size: 52, color: RuchaTheme.textSecondary),
+            const SizedBox(height: 14),
+            const Text(
+              'No segments yet',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => _createSegment(context, store),
+              icon: const Icon(Icons.add, size: 17),
+              label: const Text('Create your first segment'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _segmentCard(SegmentItem segment) {
+    final isRide = segment.type == 'ride';
+    final accent = isRide ? RuchaTheme.accentGreen : RuchaTheme.accent;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  segment.category,
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                '${segment.attempts} attempt${segment.attempts == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  color: RuchaTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            segment.name,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${RuchaConstants.cities[segment.city]?.name ?? segment.city} · '
+            '${segment.distance.toStringAsFixed(1)} km · '
+            '+${segment.elevationGain.round()} m climb · ${isRide ? 'Ride' : 'Run'}',
+            style:
+                const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: RuchaTheme.surface2.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(CupertinoIcons.star_fill,
+                        size: 14, color: RuchaTheme.accentGold),
+                    const SizedBox(width: 6),
+                    Text(
+                      'CR: ${segment.bestAthlete}',
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                Text(
+                  segment.bestSec > 0
+                      ? RuchaConstants.formatDuration(segment.bestSec)
+                      : 'No time',
+                  style: const TextStyle(
+                    color: RuchaTheme.accentGold,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _createSegment(BuildContext context, ActivityStore store) {
+    final auth = context.read<AuthService>();
+    final activities = store.activities;
+    if (activities.isEmpty) {
+      showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: RuchaTheme.surface,
+          title: const Text('Record an activity first'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final activity = activities.first;
+    final category = _categoryFor(
+        activity.elevation / (activity.distance == 0 ? 1 : activity.distance));
+    final athlete = auth.currentUser?.displayName ??
+        (auth.isGuest ? 'Guest athlete' : 'RUCHA athlete');
+    final segment = SegmentItem(
+      id: 'seg_${DateTime.now().millisecondsSinceEpoch}',
+      name: activity.title,
+      city: activity.city,
+      distance: activity.distance,
+      elevationGain: activity.elevation,
+      category: category,
+      type: activity.type,
+      attempts: 1,
+      bestSec: activity.duration,
+      bestAthlete: athlete,
+    );
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: RuchaTheme.surface,
+        title: const Row(
+          children: [
+            Icon(Icons.terrain, color: RuchaTheme.accentGreen, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Create segment',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Use "${activity.title}" as your course?',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${activity.distance.toStringAsFixed(2)} km · '
+              '+${activity.elevation.round()} m · $category. '
+              'The start and finish of this route become the segment match points.',
+              style: const TextStyle(
+                color: RuchaTheme.textSecondary,
+                fontSize: 12,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              Navigator.pop(dialogContext);
+              setState(() => _segments.insert(0, segment));
+              await _saveSegments();
+              if (!mounted) return;
+              messenger.showSnackBar(
+                SnackBar(
+                    content:
+                        Text('Segment "${segment.name}" created locally.')),
+              );
+            },
+            child: const Text('Create segment'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _categoryFor(double gainPerKm) {
+    if (gainPerKm >= 800) return 'HC';
+    if (gainPerKm >= 500) return 'Cat 1';
+    if (gainPerKm >= 250) return 'Cat 2';
+    if (gainPerKm >= 100) return 'Cat 3';
+    return 'Cat 4';
   }
 }

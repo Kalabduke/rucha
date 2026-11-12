@@ -171,6 +171,30 @@ type Club struct {
 	CreatedAt   string `json:"createdAt,omitempty"`
 }
 
+// CommunityPost is one message or event in a community channel.
+//
+// A community works like a Telegram channel and group combined: joined members
+// read the channel and post messages, while join events and challenge
+// announcements are published automatically as system posts.
+type CommunityPost struct {
+	ID          string  `json:"id"`
+	ClubID      string  `json:"clubId"`
+	ClubName    string  `json:"clubName,omitempty"`
+	AuthorID    string  `json:"authorId,omitempty"`
+	AuthorName  string  `json:"authorName,omitempty"`
+	Kind        string  `json:"kind"`
+	Title       string  `json:"title"`
+	Body        string  `json:"body,omitempty"`
+	ActivityID  string  `json:"activityId,omitempty"`
+	ChallengeID string  `json:"challengeId,omitempty"`
+	SegmentID   string  `json:"segmentId,omitempty"`
+	DistanceKm  float64 `json:"distanceKm,omitempty"`
+	DurationSec int     `json:"durationSec,omitempty"`
+	ElevationM  int     `json:"elevationM,omitempty"`
+	City        string  `json:"city,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+}
+
 type PopularArea struct {
 	Lat      float64 `json:"lat"`
 	Lng      float64 `json:"lng"`

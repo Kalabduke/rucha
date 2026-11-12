@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rucha_mobile/core/constants.dart';
@@ -31,9 +33,9 @@ void main() {
     expect(seaLevelPace, greaterThan(260.0)); // ~4:40/km
   });
 
-  test('TrackingService Kalman filter rejects poor accuracy fixes', () {
-    final tracker = TrackingService();
-    tracker.startRecording(title: 'Test Run');
+  test('TrackingService Kalman filter rejects poor accuracy fixes', () async {
+    final tracker = TrackingService()..bypassLocationChecksForTests = true;
+    await tracker.startRecording(title: 'Test Run');
 
     // Add a coarse 2000m fix
     final accepted = tracker.addGpsFix(
@@ -53,6 +55,35 @@ void main() {
     );
     expect(accepted2, isTrue);
     expect(tracker.track.length, equals(1));
+
+    tracker.dispose();
+  });
+
+  test('TrackingService kilometre splits use real elapsed time', () async {
+    final tracker = TrackingService()..bypassLocationChecksForTests = true;
+    await tracker.startRecording(title: 'Split pacing test');
+
+    const baseTime = 1700000000000;
+    const stepLat = 0.0002; // roughly 22 m per fix
+    for (var i = 0; i < 200; i++) {
+      tracker.addGpsFix(
+        lat: 9.0320 + (i * stepLat),
+        lng: 38.7469,
+        ele: 2355.0,
+        accuracy: 5.0,
+        timestamp: baseTime + (i * 2000),
+      );
+      if (tracker.totalDistanceKm > 1.2) break;
+    }
+
+    expect(tracker.totalDistanceKm, greaterThan(1.0));
+    expect(tracker.splits, isNotEmpty);
+    expect(tracker.splits.first.km, equals(1));
+    expect(tracker.splits.first.paceSeconds, greaterThan(0));
+    // A fixed 300s split would hide the actual elapsed time.
+    expect(tracker.splits.first.paceSeconds, lessThan(300));
+
+    tracker.dispose();
   });
 
   test('AuthService models and phone number validation', () {
@@ -132,14 +163,42 @@ void main() {
     expect(restored.maxHr, equals(178));
   });
 
-  test('AuthService verified athlete login with athlete / Password123', () async {
+  test('AuthService registers, hashes and verifies a local account', () async {
     SharedPreferences.setMockInitialValues({});
-    final auth = AuthService();
-    final res = await auth.login('athlete', 'Password123');
-    expect(res.success, isTrue);
-    expect(res.user, isNotNull);
-    expect(res.user!.username, equals('athlete'));
-    expect(res.user!.displayName, equals('Abebe Bikila'));
-    expect(res.user!.profileComplete, isTrue);
+    final auth = AuthService(baseUrl: 'http://127.0.0.1:9/api');
+    final result = await auth.register(
+      'local_runner',
+      'Password123',
+      'Local Runner',
+      phoneNumber: '+251911234567',
+    );
+
+    expect(result.success, isTrue);
+    expect(result.user, isNotNull);
+    expect(result.user!.username, equals('local_runner'));
+    expect(result.user!.displayName, equals('Local Runner'));
+    expect(result.user!.providers.contains('local'), isTrue);
+    expect(result.token?.startsWith('local_'), isTrue);
+    expect(auth.canUseApp, isTrue);
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('rucha_local_accounts_db_v1');
+    expect(raw, isNotNull);
+    final db = jsonDecode(raw!) as Map<String, dynamic>;
+    final account = db['local_runner'] as Map<String, dynamic>;
+    expect(account['password'], isNull);
+    expect(account['passwordHash'], isA<String>());
+    expect(account['salt'], isA<String>());
+
+    await auth.logout();
+    expect(auth.canUseApp, isFalse);
+
+    final login = await auth.login('local_runner', 'Password123');
+    expect(login.success, isTrue);
+    expect(login.user!.displayName, equals('Local Runner'));
+
+    final wrong = await auth.login('local_runner', 'WrongPassword9');
+    expect(wrong.success, isFalse);
+    expect(wrong.error, contains('Incorrect password'));
   });
 }

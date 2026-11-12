@@ -1,223 +1,212 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../core/theme.dart';
+import '../models/user.dart';
+import '../services/activity_store.dart';
 import '../services/auth_service.dart';
 import 'auth_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthService>(context);
+    final auth = context.watch<AuthService>();
+    final store = context.watch<ActivityStore>();
     final user = auth.currentUser;
     final isAuthed = auth.isAuthenticated && user != null;
+    final stats = store.allTimeStats;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGreen)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentGold)),
-                Expanded(child: Container(height: 2.5, color: RuchaTheme.accentRed)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text('Athlete Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        actions: [
-          if (isAuthed)
-            IconButton(
-              icon: const Icon(CupertinoIcons.square_arrow_right, color: RuchaTheme.accentRed),
-              tooltip: 'Sign Out',
-              onPressed: () => _confirmSignOut(context, auth),
-            )
-          else
-            TextButton.icon(
-              icon: const Icon(CupertinoIcons.person_crop_circle_badge_plus, size: 18, color: RuchaTheme.accentGreen),
-              label: const Text('Sign In', style: TextStyle(color: RuchaTheme.accentGreen, fontWeight: FontWeight.bold)),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AuthScreen(initialIsLogin: true)),
-              ),
-            ),
-          IconButton(
-            icon: const Icon(CupertinoIcons.settings),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings & Privacy consent up to date (v2026-11-07)')),
-              );
-            },
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isAuthed) _buildAthleteCard(user, auth) else _buildGuestCard(context, auth),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _statTile('TOTAL DISTANCE', stats.distanceKm.toStringAsFixed(1), 'km'),
+              const SizedBox(width: 10),
+              _statTile('TOTAL CLIMB', stats.elevationGain.round().toString(), 'm'),
+              const SizedBox(width: 10),
+              _statTile('ACTIVITIES', '${stats.activityCount}', stats.activityCount == 1 ? 'run' : 'runs'),
+            ],
           ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // User Card or Guest Sign In Banner
-            if (isAuthed)
-              _buildAthleteCard(context, user)
-            else
-              _buildGuestSignInCard(context),
-
-            const SizedBox(height: 16),
-
-            // All-Time Summary Stats
-            Row(
-              children: [
-                _statTile('TOTAL DISTANCE', '312.4', 'km'),
-                const SizedBox(width: 10),
-                _statTile('TOTAL CLIMB', '4,820', 'm'),
-                const SizedBox(width: 10),
-                _statTile('ACTIVITIES', '42', 'runs'),
-              ],
+          const SizedBox(height: 24),
+          const Text(
+            'WEEKLY TRAINING VOLUME',
+            style: TextStyle(
+              color: RuchaTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
             ),
-
-            const SizedBox(height: 24),
-
-            // Weekly Training Volume (Last 7 Weeks)
-            const Text(
-              'WEEKLY TRAINING VOLUME',
-              style: TextStyle(
+          ),
+          const SizedBox(height: 10),
+          _buildWeeklyChart(store),
+          const SizedBox(height: 24),
+          const Text(
+            'PERSONAL RECORDS (ALTITUDE ADJUSTED)',
+            style: TextStyle(
+              color: RuchaTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _buildBestEfforts(store),
+          const SizedBox(height: 24),
+          // Settings row — taps into the dedicated Settings screen
+          Container(
+            decoration: BoxDecoration(
+              color: RuchaTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: RuchaTheme.border),
+            ),
+            child: ListTile(
+              leading: const Icon(
+                CupertinoIcons.settings,
                 color: RuchaTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
+                size: 22,
               ),
-            ),
-            const SizedBox(height: 10),
-
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: RuchaTheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: RuchaTheme.border),
+              title: const Text(
+                'Settings',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Weekly Distance', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                      Text('48.6 km this week', style: TextStyle(color: RuchaTheme.accentGreen, fontWeight: FontWeight.w800, fontSize: 13)),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _bar('W38', 34, 60),
-                      _bar('W39', 42, 75),
-                      _bar('W40', 28, 50),
-                      _bar('W41', 52, 90),
-                      _bar('W42', 45, 80),
-                      _bar('W43', 39, 70),
-                      _bar('Now', 49, 88, isCurrent: true),
-                    ],
-                  ),
-                ],
+              subtitle: const Text(
+                'Language, preferences, recording',
+                style: TextStyle(fontSize: 11, color: RuchaTheme.textSecondary),
               ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Best Efforts / Personal Records (Addis High Altitude)
-            const Text(
-              'PERSONAL RECORDS (ALTITUDE ADJUSTED)',
-              style: TextStyle(
-                color: RuchaTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            Container(
-              decoration: BoxDecoration(
-                color: RuchaTheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: RuchaTheme.border),
-              ),
-              child: Column(
-                children: [
-                  _prRow('1 km', '3:22', 'Meskel Square Flat Track'),
-                  _divider(),
-                  _prRow('5 km', '17:48', 'Bole Medhane Alem Loop'),
-                  _divider(),
-                  _prRow('10 km', '38:12', 'Entoto Ridge Climb'),
-                  _divider(),
-                  _prRow('Half Marathon', '1:24:05', 'Great Ethiopian Run Course'),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Ethiopian Runner Badge & Legal Note
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: RuchaTheme.surface2,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: RuchaTheme.border),
-              ),
-              child: Row(
-                children: [
-                  const Icon(CupertinoIcons.shield_lefthalf_fill, color: RuchaTheme.accentGreen, size: 28),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Privacy First · Private by Default', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Activities are private by default. Only friends you approve can view shared runs. Terms & Privacy v2026-11-07.',
-                          style: TextStyle(color: RuchaTheme.textSecondary.withOpacity(0.8), fontSize: 11),
+              trailing: const Icon(Icons.chevron_right, size: 18, color: RuchaTheme.textSecondary),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      appBar: AppBar(
+                        leading: const BackButton(),
+                        title: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Text(
+                              'RUCHA / SETTINGS',
+                              style: TextStyle(
+                                color: RuchaTheme.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                            Text(
+                              'Make it yours',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: RuchaTheme.textPrimary,
+                                height: 1.1,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                        bottom: PreferredSize(
+                          preferredSize: const Size.fromHeight(3.0),
+                          child: Row(
+                            children: [
+                              Expanded(child: Container(height: 3, color: RuchaTheme.accentGreen)),
+                              Expanded(child: Container(height: 3, color: RuchaTheme.accentGold)),
+                              Expanded(child: Container(height: 3, color: RuchaTheme.accentRed)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      body: const SettingsScreen(),
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
-
-            if (isAuthed) ...[
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () => _confirmSignOut(context, auth),
-                icon: const Icon(CupertinoIcons.square_arrow_right, size: 18, color: RuchaTheme.accentRed),
-                label: const Text('Sign Out', style: TextStyle(color: RuchaTheme.accentRed, fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: RuchaTheme.accentRed.withOpacity(0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: RuchaTheme.surface2,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: RuchaTheme.border),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.shield_lefthalf_fill,
+                  color: RuchaTheme.accentGreen,
+                  size: 28,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Privacy first · private by default',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Activities are private by default. Local-mode runs stay on this '
+                        'device until you connect a RUCHA server. '
+                        'Terms & Privacy v${auth.config.privacyVersion}.',
+                        style: TextStyle(
+                          color: RuchaTheme.textSecondary.withValues(alpha: 0.9),
+                          fontSize: 11,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isAuthed || auth.isGuest) ...[
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => _confirmSignOut(context, auth),
+              icon: const Icon(
+                CupertinoIcons.square_arrow_right,
+                size: 18,
+                color: RuchaTheme.accentRed,
+              ),
+              label: Text(
+                auth.isGuest ? 'Exit guest mode' : 'Sign out',
+                style: const TextStyle(
+                  color: RuchaTheme.accentRed,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-
-            const SizedBox(height: 20),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: RuchaTheme.accentRed.withValues(alpha: 0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
           ],
-        ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
 
-  Widget _buildAthleteCard(BuildContext context, dynamic user) {
+  Widget _buildAthleteCard(User user, AuthService auth) {
     final name = user.displayName.isNotEmpty ? user.displayName : user.username;
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'A';
-    final providers = user.providers as List<String>;
+    final providers = <String>{
+      ...user.providers,
+      if (auth.isLocalAccount) 'local',
+    }.toList();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -235,7 +224,11 @@ class ProfileScreen extends StatelessWidget {
                 backgroundColor: RuchaTheme.accentGreen,
                 child: Text(
                   initial,
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -243,71 +236,89 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                    Text(
+                      name,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                    ),
                     const SizedBox(height: 2),
-                    Text('@${user.username}', style: const TextStyle(color: RuchaTheme.accentGreen, fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(
+                      '@${user.username}',
+                      style: const TextStyle(
+                        color: RuchaTheme.accentGreen,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text('${user.city}, Ethiopia · Altitude 2,355m', style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+                    Text(
+                      '${user.city}, Ethiopia',
+                      style: const TextStyle(
+                        color: RuchaTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          if (providers.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const Divider(color: RuchaTheme.border, height: 1),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Text('Connected: ', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11)),
-                for (final p in providers) ...[
-                  Container(
-                    margin: const EdgeInsets.only(right: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: p == 'telegram' ? const Color(0xFF2AABEE).withOpacity(0.2) : RuchaTheme.surface2,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: p == 'telegram' ? const Color(0xFF2AABEE).withOpacity(0.5) : RuchaTheme.border,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (p == 'telegram')
-                          const Icon(CupertinoIcons.paperplane_fill, size: 10, color: Color(0xFF2AABEE))
-                        else if (p == 'google')
-                          const Icon(CupertinoIcons.globe, size: 10, color: Colors.white)
-                        else
-                          const Icon(Icons.apple, size: 12, color: Colors.white),
-                        const SizedBox(width: 4),
-                        Text(
-                          p.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: p == 'telegram' ? const Color(0xFF2AABEE) : Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
+          const SizedBox(height: 14),
+          const Divider(color: RuchaTheme.border, height: 1),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 3),
+                child: Text(
+                  'Connected: ',
+                  style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11),
+                ),
+              ),
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final provider in providers) _providerChip(provider),
+                    if (providers.isEmpty) _providerChip('account'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildGuestSignInCard(BuildContext context) {
+  Widget _providerChip(String provider) {
+    final isTelegram = provider == 'telegram';
+    final isLocal = provider == 'local';
+    final color = isTelegram
+        ? const Color(0xFF2AABEE)
+        : (isLocal ? RuchaTheme.accentGold : RuchaTheme.textSecondary);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        isLocal ? 'ON THIS DEVICE' : provider.toUpperCase(),
+        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: color),
+      ),
+    );
+  }
+
+  Widget _buildGuestCard(BuildContext context, AuthService auth) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: RuchaTheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: RuchaTheme.accentGreen.withOpacity(0.3)),
+        border: Border.all(color: RuchaTheme.accentGreen.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -317,16 +328,32 @@ class ProfileScreen extends StatelessWidget {
               CircleAvatar(
                 radius: 26,
                 backgroundColor: RuchaTheme.surface2,
-                child: const Icon(CupertinoIcons.person_fill, color: RuchaTheme.textSecondary, size: 24),
+                child: const Icon(
+                  CupertinoIcons.person_fill,
+                  color: RuchaTheme.textSecondary,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Athlete Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                    SizedBox(height: 2),
-                    Text('Sync runs, earn trophies, & join clubs', style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12)),
+                    Text(
+                      auth.isGuest ? 'Guest athlete' : 'Athlete profile',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      auth.isGuest
+                          ? 'Runs are saved on this device. Create an account to keep them synced.'
+                          : 'Sign in to sync runs, earn trophies and join clubs.',
+                      style: const TextStyle(
+                        color: RuchaTheme.textSecondary,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -338,20 +365,13 @@ class ProfileScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const AuthScreen(initialIsLogin: false)),
             ),
             icon: const Icon(CupertinoIcons.sparkles, size: 18),
-            label: const Text('Sign In or Create Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: RuchaTheme.accentGreen,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
-            ),
+            label: const Text('Sign in or create account'),
           ),
           const SizedBox(height: 8),
           const Center(
             child: Text(
-              'Supports Telegram, Google, Apple ID & Username',
-              style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 11),
+              'Local account or Telegram when the backend is connected',
+              style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 10.5),
             ),
           ),
         ],
@@ -359,24 +379,177 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _confirmSignOut(BuildContext context, AuthService auth) {
-    showCupertinoDialog(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out of RUCHA?'),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(ctx).pop(),
+  Widget _buildWeeklyChart(ActivityStore store) {
+    final weeks = store.weeklyVolume();
+    final maxDistance = weeks.fold<double>(0, (value, week) => value > week.distanceKm ? value : week.distanceKm);
+    final thisWeek = weeks.isEmpty ? 0.0 : weeks.last.distanceKm;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Weekly distance',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+              Text(
+                '${thisWeek.toStringAsFixed(1)} km this week',
+                style: const TextStyle(
+                  color: RuchaTheme.accentGreen,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
+          const SizedBox(height: 18),
+          if (maxDistance <= 0)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 22),
+              child: Center(
+                child: Text(
+                  'Record a run to start your weekly chart.',
+                  style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: 132,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (var i = 0; i < weeks.length; i++)
+                    _bar(
+                      i == weeks.length - 1 ? 'Now' : weeks[i].label,
+                      weeks[i].distanceKm,
+                      weeklyBarHeight(weeks[i].distanceKm, maxDistance),
+                      isCurrent: i == weeks.length - 1,
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar(String label, double km, double height, {bool isCurrent = false}) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          km <= 0 ? '0' : km.toStringAsFixed(km >= 10 ? 0 : 1),
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.bold,
+            color: isCurrent ? RuchaTheme.accentGreen : RuchaTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          width: 15,
+          height: height,
+          decoration: BoxDecoration(
+            color: isCurrent ? RuchaTheme.accentGreen : RuchaTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 9.5, color: RuchaTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBestEfforts(ActivityStore store) {
+    final efforts = store.bestEfforts;
+    if (efforts.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: RuchaTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: RuchaTheme.border),
+        ),
+        child: const Column(
+          children: [
+            Icon(CupertinoIcons.rosette, color: RuchaTheme.textSecondary, size: 32),
+            SizedBox(height: 10),
+            Text(
+              'No best efforts yet',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Record a GPS run of at least 1 km to set your first personal record.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: RuchaTheme.textSecondary, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: RuchaTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: RuchaTheme.border),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < efforts.length; i++) ...[
+            if (i > 0) const Divider(height: 1, color: RuchaTheme.border),
+            _prRow(
+              efforts[i].label,
+              formatEffortSeconds(efforts[i].seconds),
+              efforts[i].activityTitle,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _confirmSignOut(BuildContext context, AuthService auth) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: RuchaTheme.surface,
+        title: Text(auth.isGuest ? 'Exit guest mode?' : 'Sign out?'),
+        content: Text(
+          auth.isGuest
+              ? 'Your activities remain saved on this device. You can create an account later.'
+              : 'You can sign back in with your username and password. Local activities remain on this device.',
+          style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
             onPressed: () {
-              Navigator.of(ctx).pop();
+              Navigator.of(dialogContext).pop();
               auth.logout();
             },
-            child: const Text('Sign Out'),
+            child: Text(
+              auth.isGuest ? 'Exit' : 'Sign out',
+              style: const TextStyle(color: RuchaTheme.accentRed),
+            ),
           ),
         ],
       ),
@@ -395,39 +568,41 @@ class ProfileScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+            Text(
+              label,
+              style: const TextStyle(
+                color: RuchaTheme.textSecondary,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
             const SizedBox(height: 6),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                Flexible(
+                  child: Text(
+                    value,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
                 const SizedBox(width: 3),
-                Text(unit, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 10, fontWeight: FontWeight.w600)),
+                Text(
+                  unit,
+                  style: const TextStyle(
+                    color: RuchaTheme.textSecondary,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ],
         ),
       ),
-    );
-  }
-
-  static Widget _bar(String label, int km, double height, {bool isCurrent = false}) {
-    return Column(
-      children: [
-        Text('$km', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isCurrent ? RuchaTheme.accentGreen : RuchaTheme.textSecondary)),
-        const SizedBox(height: 4),
-        Container(
-          width: 14,
-          height: height,
-          decoration: BoxDecoration(
-            color: isCurrent ? RuchaTheme.accentGreen : RuchaTheme.surface2,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(label, style: const TextStyle(fontSize: 10, color: RuchaTheme.textSecondary)),
-      ],
     );
   }
 
@@ -437,26 +612,45 @@ class ProfileScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              const Icon(CupertinoIcons.rosette, color: RuchaTheme.accentGold, size: 18),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  Text(detail, style: const TextStyle(color: RuchaTheme.textSecondary, fontSize: 11)),
-                ],
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(CupertinoIcons.rosette, color: RuchaTheme.accentGold, size: 18),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                      Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: RuchaTheme.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          Text(time, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: RuchaTheme.accentGold)),
+          const SizedBox(width: 10),
+          Text(
+            time,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: RuchaTheme.accentGold,
+            ),
+          ),
         ],
       ),
     );
-  }
-
-  static Widget _divider() {
-    return const Divider(height: 1, color: RuchaTheme.border);
   }
 }

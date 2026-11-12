@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -32,6 +31,9 @@ type Store interface {
 	JoinClub(id, athlete, athleteName string) error
 	LeaveClub(id, athlete string) error
 	ClubMembers(id string) (map[string]string, error)
+	CommunityPosts(clubID string) ([]CommunityPost, error)
+	CommunityFeed(limit int) ([]CommunityPost, error)
+	AddCommunityPost(p CommunityPost) error
 }
 
 type MemStore struct {
@@ -46,6 +48,7 @@ type MemStore struct {
 	segments    []Segment
 	clubs       []Club
 	clubMembers map[string]map[string]string
+	community   []CommunityPost
 }
 
 func NewMemStore() *MemStore {
@@ -60,6 +63,7 @@ func NewMemStore() *MemStore {
 		segments:    []Segment{},
 		clubs:       []Club{},
 		clubMembers: map[string]map[string]string{},
+		community:   []CommunityPost{},
 	}
 }
 
@@ -257,31 +261,12 @@ func (s *MemStore) AddSegment(seg Segment) error {
 
 func (s *MemStore) PopularAreas() ([]PopularArea, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	type cell struct {
-		lat, lng float64
-		count    int
-	}
-	m := map[string]*cell{}
-	for _, a := range s.activities {
-		la := math.Round(a.StartLat*1000) / 1000
-		ln := math.Round(a.StartLng*1000) / 1000
-		k := fmt.Sprintf("%.3f,%.3f", la, ln)
-		if m[k] == nil {
-			m[k] = &cell{lat: la, lng: ln}
-		}
-		m[k].count++
-	}
-	out := []PopularArea{}
-	for _, c := range m {
-		name, city := nearestPlace(s.places, c.lat, c.lng)
-		out = append(out, PopularArea{Lat: c.lat, Lng: c.lng, RunCount: c.count, Name: name, City: city})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].RunCount > out[j].RunCount })
-	if len(out) > 12 {
-		out = out[:12]
-	}
-	return out, nil
+	activities := make([]Activity, len(s.activities))
+	copy(activities, s.activities)
+	places := make([]Place, len(s.places))
+	copy(places, s.places)
+	s.mu.RUnlock()
+	return clusterPopularAreas(activities, places), nil
 }
 
 func (s *MemStore) HallOfFame() ([]HallEntry, error) {
@@ -383,6 +368,137 @@ func (s *MemStore) ClubMembers(id string) (map[string]string, error) {
 		out[k] = v
 	}
 	return out, nil
+}
+
+func (s *MemStore) CommunityPosts(clubID string) ([]CommunityPost, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []CommunityPost{}
+	for _, p := range s.community {
+		if p.ClubID == clubID {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	return out, nil
+}
+
+func (s *MemStore) AddCommunityPost(p CommunityPost) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.community {
+		if s.community[i].ID == p.ID {
+			s.community[i] = p
+			return nil
+		}
+	}
+	s.community = append([]CommunityPost{p}, s.community...)
+	return nil
+}
+
+func (s *MemStore) CommunityFeed(limit int) ([]CommunityPost, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]CommunityPost, len(s.community))
+	copy(out, s.community)
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// clusterPopularAreas groups activity start points that are within 500 metres
+// of each other. The cluster centre is the average of its starts, and the name
+// comes from the nearest well-known place seeded on the server. This is the
+// same rule the app describes to athletes: train in the same area and the app
+// automatically surfaces that area, without anyone posting it manually.
+func clusterPopularAreas(activities []Activity, places []Place) []PopularArea {
+	type start struct {
+		lat, lng float64
+	}
+	starts := make([]start, 0, len(activities))
+	for _, a := range activities {
+		lat, lng := a.StartLat, a.StartLng
+		if (lat == 0 && lng == 0) && len(a.Track) > 0 {
+			lat, lng = a.Track[0].Lat, a.Track[0].Lng
+		}
+		if lat == 0 && lng == 0 {
+			continue
+		}
+		starts = append(starts, start{lat: lat, lng: lng})
+	}
+
+	const radiusKm = 0.5
+	used := make([]bool, len(starts))
+	out := []PopularArea{}
+	for i := range starts {
+		if used[i] {
+			continue
+		}
+		used[i] = true
+		cluster := []start{starts[i]}
+		for j := i + 1; j < len(starts); j++ {
+			if used[j] {
+				continue
+			}
+			if haversineKm(starts[i].lat, starts[i].lng, starts[j].lat, starts[j].lng) <= radiusKm {
+				used[j] = true
+				cluster = append(cluster, starts[j])
+			}
+		}
+
+		var latSum, lngSum float64
+		for _, p := range cluster {
+			latSum += p.lat
+			lngSum += p.lng
+		}
+		lat := latSum / float64(len(cluster))
+		lng := lngSum / float64(len(cluster))
+		name, city := popularAreaName(places, lat, lng)
+		out = append(out, PopularArea{
+			Lat:      math.Round(lat*100000) / 100000,
+			Lng:      math.Round(lng*100000) / 100000,
+			RunCount: len(cluster),
+			Name:     name,
+			City:     city,
+		})
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RunCount == out[j].RunCount {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].RunCount > out[j].RunCount
+	})
+	if len(out) > 12 {
+		out = out[:12]
+	}
+	return out
+}
+
+// popularAreaName prefers a well-known landmark within 2.5 km. Farther out it
+// falls back to the nearest town/city so every automatically discovered area
+// still has a human-readable label.
+func popularAreaName(places []Place, lat, lng float64) (string, string) {
+	best := math.MaxFloat64
+	name, city := "", ""
+	for _, p := range places {
+		d := haversineKm(lat, lng, p.Lat, p.Lng)
+		if d < best {
+			best, name, city = d, p.Name, p.City
+		}
+	}
+	if best <= 2.5 && name != "" {
+		return name, city
+	}
+	if city != "" && best <= 40 {
+		return city + " training area", city
+	}
+	return "Open country", ""
 }
 
 func nearestPlace(places []Place, lat, lng float64) (string, string) {
