@@ -22,7 +22,7 @@ class City {
 
 class RuchaConstants {
   static const String appName = 'RUCHA';
-  static const String defaultApiUrl = 'https://rucha-fitness.fly.dev/api';
+  static const String defaultApiUrl = 'https://rucha-api.onrender.com/api';
 
   // 8 Ethiopian cities
   static const Map<String, City> cities = {

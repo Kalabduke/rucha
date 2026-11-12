@@ -139,6 +139,20 @@ class AuthService extends ChangeNotifier {
 
   int get minPassword => max(8, _config.minPassword);
 
+  /// Updates the base URL and persists it. Also triggers a config fetch.
+  Future<void> setBaseUrl(String url) async {
+    final normalized = _normalizeBaseUrl(url);
+    if (normalized == _baseUrl) return;
+
+    _baseUrl = normalized;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefBaseUrlKey, _baseUrl);
+    notifyListeners();
+
+    // Fetch new config from the updated URL
+    await fetchConfig();
+  }
+
   Future<void> _initialize() async {
     String baseUrl = _baseUrl;
     try {

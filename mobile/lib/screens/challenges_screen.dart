@@ -1143,40 +1143,70 @@ class _CreateChallengeSheetState extends State<_CreateChallengeSheet> {
             const SizedBox(height: 16),
 
             // Header
-            Row(children: [
-              Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                      color: RuchaTheme.accentGreen,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(CupertinoIcons.flag_fill,
-                      color: Colors.white, size: 18)),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(
-                        widget.communityId != null
-                            ? 'Submit to ${widget.communityName ?? "Community"}'
-                            : 'Create a challenge',
-                        style: const TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w800)),
-                    Text(
-                        widget.communityId != null
-                            ? 'Needs admin approval before going live'
-                            : 'Saved on device · synced when online',
-                        style: const TextStyle(
-                            fontSize: 11,
-                            color: RuchaTheme.accentGold,
-                            fontWeight: FontWeight.w600)),
-                  ])),
-              IconButton(
-                  icon:
-                      const Icon(Icons.close, color: RuchaTheme.textSecondary),
-                  onPressed: () => Navigator.pop(context)),
-            ]),
-            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    RuchaTheme.accentGreen.withOpacity(0.15),
+                    RuchaTheme.accentGreen.withOpacity(0.05),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: RuchaTheme.accentGreen.withOpacity(0.3),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(children: [
+                Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [RuchaTheme.accentGreen, Color(0xFF00C853)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: RuchaTheme.accentGreen.withOpacity(0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]),
+                    child: const Icon(CupertinoIcons.flag_fill,
+                        color: Colors.white, size: 20)),
+                const SizedBox(width: 14),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(
+                          widget.communityId != null
+                              ? 'Submit to ${widget.communityName ?? "Community"}'
+                              : 'Create a challenge',
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.3)),
+                      const SizedBox(height: 3),
+                      Text(
+                          widget.communityId != null
+                              ? 'Needs admin approval before going live'
+                              : 'Saved on device · synced when online',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: RuchaTheme.accentGold,
+                              fontWeight: FontWeight.w600)),
+                    ])),
+                IconButton(
+                    icon: const Icon(Icons.close_rounded,
+                        color: Colors.white70, size: 24),
+                    onPressed: () => Navigator.pop(context)),
+              ]),
+            ),
+            const SizedBox(height: 24),
 
             // ── Challenge title ────────────────────────────────────────────
             _lbl('Challenge name *'),
@@ -1185,14 +1215,14 @@ class _CreateChallengeSheetState extends State<_CreateChallengeSheet> {
 
             // ── Kind selector — visual cards ───────────────────────────────
             _lbl('Challenge type'),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             GridView.count(
               crossAxisCount: 3,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-              childAspectRatio: 1.5,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.4,
               children: [
                 for (final k in _kinds)
                   _KindCard(
@@ -1203,7 +1233,7 @@ class _CreateChallengeSheetState extends State<_CreateChallengeSheet> {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             // Kind description note
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1494,30 +1524,48 @@ class _KindCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: selected
-              ? RuchaTheme.accentGreen.withValues(alpha: 0.18)
-              : RuchaTheme.surface2,
-          borderRadius: BorderRadius.circular(10),
+          gradient: selected
+              ? LinearGradient(
+                  colors: [
+                    RuchaTheme.accentGreen.withOpacity(0.25),
+                    RuchaTheme.accentGreen.withOpacity(0.12),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: selected ? null : RuchaTheme.surface2,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? RuchaTheme.accentGreen : RuchaTheme.border,
-            width: selected ? 1.5 : 1,
+            width: selected ? 2 : 1,
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: RuchaTheme.accentGreen.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 18)),
-            const SizedBox(height: 2),
+            Text(emoji, style: const TextStyle(fontSize: 22)),
+            const SizedBox(height: 4),
             Text(
               label.split(' ').take(2).join('\n'),
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 9,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
                 color: selected ? Colors.white : RuchaTheme.textSecondary,
-                height: 1.2,
+                height: 1.3,
+                letterSpacing: selected ? 0.2 : 0,
               ),
             ),
           ],

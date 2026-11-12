@@ -45,8 +45,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   ];
 
   void _select(int index) {
-    if (index < 0 || index >= _navItems.length || index == _currentIndex)
+    if (index < 0 || index >= _navItems.length || index == _currentIndex) {
       return;
+    }
     setState(() => _currentIndex = index);
   }
 
@@ -62,7 +63,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       // 1 – Explore
       ExploreScreen(onStartRecording: () => _select(2)),
       // 2 – Record
-      const RecordScreen(),
+      RecordScreen(onNavigateHome: () => _select(0)),
       // 3 – Challenges
       const ChallengesScreen(),
       // 4 – Gallery
@@ -351,7 +352,7 @@ class _RuchaBottomBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 64,
+          height: 68,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -359,31 +360,39 @@ class _RuchaBottomBar extends StatelessWidget {
               _tab(0, currentIndex, navItems[0], 0, onSelect),
               // 1 – Explore
               _tab(1, currentIndex, navItems[1], 0, onSelect),
-              // 2 – Record (big orange circle)
+              // 2 – Record (large circle that pops above the bar)
               Expanded(
                 child: GestureDetector(
                   onTap: () => onSelect(2),
-                  child: Center(
-                    child: Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [RuchaTheme.accent, Color(0xFFE84E0A)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: RuchaTheme.accent.withOpacity(0.45),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
+                  child: SizedBox(
+                    height: 68,
+                    child: Center(
+                      child: Transform.translate(
+                        offset: const Offset(0, -14),
+                        child: Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFF6B35), RuchaTheme.accent],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            border:
+                                Border.all(color: RuchaTheme.surface, width: 4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: RuchaTheme.accent.withOpacity(0.6),
+                                blurRadius: 24,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                        ],
+                          child: const Icon(Icons.play_arrow_rounded,
+                              color: Colors.white, size: 36),
+                        ),
                       ),
-                      child: const Icon(Icons.play_arrow_rounded,
-                          color: Colors.white, size: 28),
                     ),
                   ),
                 ),

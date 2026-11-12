@@ -17,7 +17,8 @@ import '../widgets/osm_map_widget.dart';
 import 'run_card_screen.dart';
 
 class RecordScreen extends StatefulWidget {
-  const RecordScreen({super.key});
+  final VoidCallback? onNavigateHome;
+  const RecordScreen({super.key, this.onNavigateHome});
 
   @override
   State<RecordScreen> createState() => _RecordScreenState();
@@ -79,7 +80,7 @@ class _RecordScreenState extends State<RecordScreen>
       });
     }
 
-    // Split snackbar
+    // Split snackbar (ghost pacing)
     if (tracking.splits.length > _lastNotifiedSplit &&
         _selectedLegend != null) {
       _lastNotifiedSplit = tracking.splits.length;
@@ -88,42 +89,35 @@ class _RecordScreenState extends State<RecordScreen>
         if (!mounted) return;
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  Text(_selectedLegend!.icon,
-                      style: const TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'KM ${split.km}  ${split.paceFormatted}/km  vs ${_selectedLegend!.name}',
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-              duration: const Duration(seconds: 4),
-              backgroundColor: const Color(0xFF151B26),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(
-                    color: _selectedLegend!.accentColor.withOpacity(0.5)),
-              ),
+          ..showSnackBar(SnackBar(
+            content: Row(children: [
+              Text(_selectedLegend!.icon, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text(
+                'KM ${split.km}  ${split.paceFormatted}/km  vs ${_selectedLegend!.name}',
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              )),
+            ]),
+            duration: const Duration(seconds: 4),
+            backgroundColor: const Color(0xFF151B26),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                  color: _selectedLegend!.accentColor.withOpacity(0.5)),
             ),
-          );
+          ));
       });
     }
 
     return Scaffold(
-      // ── Full-screen map ───────────────────────────────────────────────────
       backgroundColor: const Color(0xFF0D1117),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Map fills the entire screen
+          // ── 1. Full-screen map ───────────────────────────────────────────
           Positioned.fill(
             child: OsmMapWidget(
               centerLat: preview?.lat ?? city.lat,
@@ -139,107 +133,67 @@ class _RecordScreenState extends State<RecordScreen>
             ),
           ),
 
-          // 1b. Overlay when no GPS fix yet — shows status to user
-          if (preview == null && isIdle)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 300, // above the bottom pill
-              child: Center(
-                child: _buildMapStatusPill(tracking),
-              ),
-            ),
-
-          // 2. Top-left back button — leaves the screen without stopping tracking
+          // ── 2. Top chrome: back button (left) + GPS/Watch badges (right) ─
           Positioned(
             top: 0,
             left: 0,
+            right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.only(top: 6, left: 6),
-                child: GestureDetector(
-                  onTap: () {
-                    // Pop if pushed onto the navigator stack (e.g. from a shortcut).
-                    // If embedded in the IndexedStack, pop has no effect so we
-                    // rely on the bottom nav to change tabs — that's by design.
-                    if (Navigator.of(context).canPop()) {
-                      Navigator.of(context).pop();
-                    }
-                    // No-op when embedded: tracking keeps running,
-                    // user can switch tabs normally via the bottom bar.
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0D1117).withOpacity(0.65),
-                          borderRadius: BorderRadius.circular(14),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.12)),
-                        ),
-                        child: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white,
-                          size: 17,
-                        ),
-                      ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    // Back button — always works: pops if pushed, else calls
+                    // onNavigateHome to switch the IndexedStack to Home tab.
+                    _glassButton(
+                      onTap: () {
+                        if (Navigator.of(context).canPop()) {
+                          Navigator.of(context).pop();
+                        } else {
+                          widget.onNavigateHome?.call();
+                        }
+                      },
+                      child: const Icon(Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white, size: 17),
                     ),
-                  ),
+                    const Spacer(),
+                    _buildGpsBadge(tracking),
+                    const SizedBox(width: 8),
+                    _buildSmartwatchBadge(context, smartwatch),
+                  ],
                 ),
               ),
             ),
           ),
 
-          // 2b. Bottom-anchored status row — Ride/Searching/Watch pills sit just above the bottom sheet
-          Positioned(
-            left: 14,
-            right: 14,
-            bottom: 230, // floats just above the bottom sheet handle
-            child: SafeArea(
-              top: false,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Activity type / title pill (left)
-                  if (isIdle) _activityTypePill(tracking, accent),
-                  if (isActive)
-                    _frostedPill(
-                      child: Text(
-                        tracking.activityName.isNotEmpty
-                            ? tracking.activityName
-                            : '${tracking.activityType[0].toUpperCase()}${tracking.activityType.substring(1)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  const Spacer(),
-                  // GPS badge
-                  _buildGpsBadge(tracking),
-                  const SizedBox(width: 8),
-                  // HR badge
-                  _buildSmartwatchBadge(context, smartwatch),
-                ],
-              ),
+          // ── 3. No-GPS overlay (idle, no fix yet) ──────────────────────
+          if (preview == null && isIdle)
+            Positioned(
+              left: 24,
+              right: 24,
+              bottom: 230,
+              child: Center(child: _buildMapStatusPill(tracking)),
             ),
-          ),
 
-          // 3. Corner metric boxes — shown during active recording
+          // ── 4. Live metric overlay — 2×3 grid centred on map ─────────
           if (isRunning || isPaused)
-            _buildCornerMetrics(tracking, smartwatch, accent),
+            _buildMapMetrics(tracking, smartwatch, accent),
 
-          // 3. Bottom sheet — frosted glass pill (GoCycling style)
+          // ── 5. Ghost pacer live note — floats above bottom bar ────────
+          if ((isRunning || isPaused) && _selectedLegend != null)
+            Positioned(
+              left: 16, right: 16,
+              bottom: 92, // just above the bottom controls bar
+              child: _ghostLiveNote(tracking),
+            ),
+
+          // ── 6. Bottom sheet / controls ────────────────────────────────
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _buildBottomPill(context, tracking, smartwatch, isIdle,
+            child: _buildBottomArea(context, tracking, smartwatch, isIdle,
                 isSearching, isRunning, isPaused, accent, city),
           ),
         ],
@@ -247,7 +201,302 @@ class _RecordScreenState extends State<RecordScreen>
     );
   }
 
-  // ── Map status pill ───────────────────────────────────────────────────────
+  // ── Glass button (back arrow etc) ────────────────────────────────────────
+
+  Widget _glassButton({required VoidCallback onTap, required Widget child}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1117).withOpacity(0.55),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withOpacity(0.14)),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Map metric overlay — shown while running/paused ───────────────────────
+  // Layout: two rows of three transparent glass boxes, centred on screen
+  //
+  //   [ DISTANCE ]  [ TIME ]  [ PACE ]
+  //   [ +ELEV   ]  [ CALS ]  [ HR   ]
+  //
+  // Sits in the middle-to-upper third of the map, below the top chrome and
+  // above the bottom controls bar, with enough room to see the route.
+
+  Widget _buildMapMetrics(
+      TrackingService tracking, SmartwatchService smartwatch, Color accent) {
+    final isRide = tracking.activityType == 'ride';
+    final bpm = smartwatch.currentBpm > 0
+        ? '${smartwatch.currentBpm}'
+        : (tracking.currentHr != null ? '${tracking.currentHr}' : '—');
+    final hrColor = smartwatch.currentBpm > 0 || tracking.currentHr != null
+        ? const Color(0xFFFF5252)
+        : Colors.white38;
+
+    return Positioned(
+      left: 16, right: 16,
+      top: 100, // More space below back button
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // Row 1: Distance · Time · Pace/Speed
+            Row(children: [
+              _mapMetricBox('DIST',
+                  '${tracking.totalDistanceKm.toStringAsFixed(2)} km', accent),
+              const SizedBox(width: 10),
+              _mapMetricBox(
+                  'TIME',
+                  RuchaConstants.formatDuration(tracking.elapsedSeconds),
+                  Colors.white70),
+              const SizedBox(width: 10),
+              _mapMetricBox(
+                isRide ? 'SPEED' : 'PACE',
+                isRide
+                    ? '${tracking.currentSpeedKmh.toStringAsFixed(1)} km/h'
+                    : '${RuchaConstants.formatPace(tracking.currentPace)}/km',
+                accent,
+              ),
+            ]),
+            const SizedBox(height: 10),
+            // Row 2: Elevation · Calories · HR
+            Row(children: [
+              _mapMetricBox('+ELEV', '+${tracking.elevationGain.round()} m',
+                  Colors.white54),
+              const SizedBox(width: 10),
+              _mapMetricBox(
+                  'CALS', '${tracking.calories.round()} kcal', Colors.white54),
+              const SizedBox(width: 10),
+              _mapMetricBox('HR', '$bpm bpm', hrColor),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mapMetricBox(String label, String value, Color valueColor) {
+    return Expanded(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: BoxDecoration(
+              // More transparent — 25% opacity so map is clearly visible
+              color: const Color(0xFF0D1117).withOpacity(0.25),
+              borderRadius: BorderRadius.circular(14),
+              border:
+                  Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.0,
+                    )),
+                const SizedBox(height: 3),
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: valueColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.6),
+                          offset: const Offset(0, 1),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    )),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Bottom area — slim during recording, full sheet when idle ─────────────
+
+  Widget _buildBottomArea(
+    BuildContext context,
+    TrackingService tracking,
+    SmartwatchService smartwatch,
+    bool isIdle,
+    bool isSearching,
+    bool isRunning,
+    bool isPaused,
+    Color accent,
+    City city,
+  ) {
+    // During active recording → only show Pause/Finish bar (slim)
+    if (isRunning || isPaused) {
+      return _buildActiveControls(
+          context, tracking, isRunning, isPaused, accent);
+    }
+    // Searching for GPS → compact indicator
+    if (isSearching) {
+      return _buildSearchingBar();
+    }
+    // Idle → full setup sheet
+    return _buildBottomPill(context, tracking, smartwatch, isIdle, isSearching,
+        isRunning, isPaused, accent, city);
+  }
+
+  /// Slim frosted bar with ONLY Pause + Finish during recording.
+  Widget _buildActiveControls(BuildContext context, TrackingService tracking,
+      bool isRunning, bool isPaused, Color accent) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1117).withOpacity(0.75),
+            border: Border(
+              top: BorderSide(color: Colors.white.withOpacity(0.12)),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+              child: Row(children: [
+                if (isRunning) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: tracking.pauseRecording,
+                      icon: const Icon(CupertinoIcons.pause_fill, size: 17),
+                      label: const Text('Pause',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 14)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                            color: Colors.white.withOpacity(0.3), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _finishAndSave(context, tracking),
+                      icon: const Icon(Icons.stop_rounded, size: 18),
+                      label: const Text('Finish',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 14)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: RuchaTheme.accentRed,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        elevation: 4,
+                      ),
+                    ),
+                  ),
+                ],
+                if (isPaused) ...[
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: tracking.resumeRecording,
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: const Text('Resume',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 14)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        elevation: 4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _finishAndSave(context, tracking),
+                      icon: const Icon(Icons.stop_rounded, size: 18),
+                      label: const Text('Finish',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 14)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: RuchaTheme.accentRed,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        elevation: 4,
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchingBar() {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1117).withOpacity(0.75),
+            border:
+                Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: RuchaTheme.accentGreen),
+                ),
+                const SizedBox(width: 12),
+                const Text('Acquiring GPS…',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildMapStatusPill(TrackingService tracking) {
     // Permission blocked — show actionable message
