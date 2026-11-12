@@ -32,7 +32,6 @@ services:
     name: rucha-keepalive
     runtime: node
     region: oregon
-    plan: free
     schedule: "*/10 * * * *"
     buildCommand: "true"
     startCommand: curl -fsS --max-time 10 https://rucha-api.onrender.com/api/health || exit 0
